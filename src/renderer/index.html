@@ -64,7 +64,9 @@
     }
 
     .user-badge .tier { color: var(--warning); font-weight: 600; }
+    .user-badge .tier.starter { color: #3b82f6; }
     .user-badge .tier.pro { color: var(--success); }
+    .user-badge .tier.agency { color: #a855f7; }
 
     .quota-bar {
       background: var(--bg);
@@ -1527,7 +1529,11 @@
         userBadge.style.display = 'flex';
         userEmail.textContent = currentUser.email?.split('@')[0] || 'User';
         userTier.textContent = currentTier.toUpperCase();
-        userTier.classList.toggle('pro', currentTier === 'pro');
+        // Remove all tier classes and add current one
+        userTier.classList.remove('pro', 'starter', 'agency');
+        if (['pro', 'starter', 'agency'].includes(currentTier)) {
+          userTier.classList.add(currentTier);
+        }
         logoutBtn.style.display = 'block';
       } else {
         loginBtn.style.display = 'block';
@@ -1592,31 +1598,40 @@
 
         const quotaCount = document.getElementById('quota-count');
         const upgradeBtn = document.getElementById('upgrade-btn');
-        const remaining = status.quota.posts.remaining;
-        const limit = status.quota.posts.limit;
+        const postsRemaining = status.quota.posts.remaining;
+        const postsLimit = status.quota.posts.limit;
+        const repliesRemaining = status.quota.replies?.remaining || 0;
+        const repliesLimit = status.quota.replies?.limit || 0;
 
-        quotaCount.textContent = `${remaining}/${limit}`;
+        // Show posts + replies quota if replies are available
+        if (repliesLimit > 0) {
+          quotaCount.textContent = `${postsRemaining}/${postsLimit} posts • ${repliesRemaining}/${repliesLimit} replies`;
+        } else {
+          quotaCount.textContent = `${postsRemaining}/${postsLimit}`;
+        }
         quotaCount.classList.remove('low', 'empty');
-        if (remaining === 0) quotaCount.classList.add('empty');
-        else if (remaining <= 1) quotaCount.classList.add('low');
+        if (postsRemaining === 0) quotaCount.classList.add('empty');
+        else if (postsRemaining <= 1) quotaCount.classList.add('low');
 
-        // Show upgrade button for free users
-        upgradeBtn.style.display = currentTier === 'free' ? 'block' : 'none';
+        // Show upgrade button for non-agency users
+        upgradeBtn.style.display = currentTier === 'agency' ? 'none' : 'block';
 
-        // Update subscription display
+        // Update subscription display based on 4-tier model
         const tierDisplay = document.getElementById('sub-tier-display');
         const subDetail = document.getElementById('sub-detail');
         const subActionBtn = document.getElementById('sub-action-btn');
 
-        if (currentTier === 'pro') {
-          tierDisplay.textContent = 'Pro Plan';
-          subDetail.textContent = '30 posts/day • AI • Scheduling';
-          subActionBtn.textContent = 'Manage';
-        } else {
-          tierDisplay.textContent = 'Free Plan';
-          subDetail.textContent = '3 posts/day';
-          subActionBtn.textContent = 'Upgrade';
-        }
+        const tierInfo = {
+          free: { name: 'Free Plan', detail: '3 posts/day • AI試用', action: 'Upgrade' },
+          starter: { name: 'Starter Plan', detail: '5 posts • 10 replies • Scheduling', action: 'Upgrade' },
+          pro: { name: 'Pro Plan', detail: '10 posts • 30 replies • KB', action: 'Manage' },
+          agency: { name: 'Agency Plan', detail: '30 posts • 100 replies • Full Suite', action: 'Manage' }
+        };
+
+        const info = tierInfo[currentTier] || tierInfo.free;
+        tierDisplay.textContent = info.name;
+        subDetail.textContent = info.detail;
+        subActionBtn.textContent = info.action;
 
         // Update auth UI with current tier
         updateAuthUI();

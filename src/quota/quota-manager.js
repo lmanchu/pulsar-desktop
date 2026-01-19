@@ -44,8 +44,10 @@ class QuotaManager {
     return {
       posts_used: 0,
       posts_limit: 3,
+      replies_used: 0,
+      replies_limit: 0,
       ai_generations_used: 0,
-      ai_generations_limit: 0
+      ai_generations_limit: 3
     };
   }
 
@@ -61,9 +63,12 @@ class QuotaManager {
       return limits;
     } catch (error) {
       console.error('[QuotaManager] Failed to fetch tier limits:', error);
+      // Fallback tier limits matching 4-tier pricing model
       return [
-        { tier: 'free', daily_posts: 3, has_scheduling: false, has_ai_generation: false },
-        { tier: 'pro', daily_posts: 30, has_scheduling: true, has_ai_generation: true }
+        { tier: 'free', daily_posts: 3, daily_replies: 0, has_scheduling: false, has_ai_generation: true, daily_ai_generations: 3, max_tracked_accounts: 0, max_interest_topics: 0, max_social_accounts: 1, has_knowledge_base: false, price_monthly_usd: 0 },
+        { tier: 'starter', daily_posts: 5, daily_replies: 10, has_scheduling: true, has_ai_generation: true, daily_ai_generations: 10, max_tracked_accounts: 3, max_interest_topics: 3, max_social_accounts: 3, has_knowledge_base: false, price_monthly_usd: 14.99 },
+        { tier: 'pro', daily_posts: 10, daily_replies: 30, has_scheduling: true, has_ai_generation: true, daily_ai_generations: 30, max_tracked_accounts: 10, max_interest_topics: 10, max_social_accounts: 5, has_knowledge_base: true, price_monthly_usd: 49.00 },
+        { tier: 'agency', daily_posts: 30, daily_replies: 100, has_scheduling: true, has_ai_generation: true, daily_ai_generations: 100, max_tracked_accounts: 50, max_interest_topics: 20, max_social_accounts: 10, has_knowledge_base: true, price_monthly_usd: 99.00 }
       ];
     }
   }
@@ -219,6 +224,11 @@ class QuotaManager {
           limit: quota.posts_limit,
           remaining: Math.max(0, quota.posts_limit - quota.posts_used)
         },
+        replies: {
+          used: quota.replies_used || 0,
+          limit: quota.replies_limit || 0,
+          remaining: Math.max(0, (quota.replies_limit || 0) - (quota.replies_used || 0))
+        },
         aiGenerations: {
           used: quota.ai_generations_used,
           limit: quota.ai_generations_limit,
@@ -231,7 +241,11 @@ class QuotaManager {
         knowledgeBase: tierLimit.has_knowledge_base,
         trackedAccounts: tierLimit.max_tracked_accounts > 0,
         maxTrackedAccounts: tierLimit.max_tracked_accounts,
-        maxSocialAccounts: tierLimit.max_social_accounts
+        interestTopics: tierLimit.max_interest_topics > 0,
+        maxInterestTopics: tierLimit.max_interest_topics,
+        maxSocialAccounts: tierLimit.max_social_accounts,
+        replies: (tierLimit.daily_replies || 0) > 0,
+        dailyReplies: tierLimit.daily_replies || 0
       },
       subscription: subscriptionInfo
     };

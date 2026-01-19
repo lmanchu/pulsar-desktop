@@ -11,7 +11,7 @@ CREATE TABLE users (
   updated_at TIMESTAMPTZ DEFAULT NOW(),
 
   -- Subscription info
-  subscription_tier TEXT DEFAULT 'free' CHECK (subscription_tier IN ('free', 'pro')),
+  subscription_tier TEXT DEFAULT 'free' CHECK (subscription_tier IN ('free', 'starter', 'pro', 'agency')),
   subscription_status TEXT DEFAULT 'active' CHECK (subscription_status IN ('active', 'canceled', 'past_due')),
   subscription_started_at TIMESTAMPTZ,
   subscription_ends_at TIMESTAMPTZ,
@@ -32,23 +32,31 @@ CREATE INDEX idx_users_stripe_customer ON users(stripe_customer_id);
 -- 2. Tier Limits Configuration
 -- ============================================
 CREATE TABLE tier_limits (
-  tier TEXT PRIMARY KEY CHECK (tier IN ('free', 'pro')),
+  tier TEXT PRIMARY KEY CHECK (tier IN ('free', 'starter', 'pro', 'agency')),
   daily_posts INTEGER NOT NULL,
+  daily_replies INTEGER DEFAULT 0,
   has_scheduling BOOLEAN DEFAULT FALSE,
   has_ai_generation BOOLEAN DEFAULT FALSE,
   daily_ai_generations INTEGER DEFAULT 0,
   max_tracked_accounts INTEGER DEFAULT 0,
+  max_interest_topics INTEGER DEFAULT 0,
   max_social_accounts INTEGER DEFAULT 1,
   has_knowledge_base BOOLEAN DEFAULT FALSE,
   price_monthly_usd DECIMAL(10,2) DEFAULT 0,
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- Insert default tier limits
-INSERT INTO tier_limits (tier, daily_posts, has_scheduling, has_ai_generation, daily_ai_generations, max_tracked_accounts, max_social_accounts, has_knowledge_base, price_monthly_usd)
+-- Insert default tier limits (4-tier pricing model)
+-- Free: Entry level, limited to manual posting
+-- Starter: Getting serious about automation
+-- Pro: Full automation with knowledge base
+-- Agency: Replace a community manager
+INSERT INTO tier_limits (tier, daily_posts, daily_replies, has_scheduling, has_ai_generation, daily_ai_generations, max_tracked_accounts, max_interest_topics, max_social_accounts, has_knowledge_base, price_monthly_usd)
 VALUES
-  ('free', 3, FALSE, FALSE, 0, 0, 1, FALSE, 0),
-  ('pro', 30, TRUE, TRUE, 50, 100, 10, TRUE, 9.99);
+  ('free', 3, 0, FALSE, TRUE, 3, 0, 0, 1, FALSE, 0),
+  ('starter', 5, 10, TRUE, TRUE, 10, 3, 3, 3, FALSE, 14.99),
+  ('pro', 10, 30, TRUE, TRUE, 30, 10, 10, 5, TRUE, 49.00),
+  ('agency', 30, 100, TRUE, TRUE, 100, 50, 20, 10, TRUE, 99.00);
 
 -- ============================================
 -- 3. Daily Quotas Table
@@ -61,6 +69,8 @@ CREATE TABLE quotas (
   -- Usage counters
   posts_used INTEGER DEFAULT 0,
   posts_limit INTEGER NOT NULL,
+  replies_used INTEGER DEFAULT 0,
+  replies_limit INTEGER DEFAULT 0,
   ai_generations_used INTEGER DEFAULT 0,
   ai_generations_limit INTEGER DEFAULT 0,
 
@@ -292,8 +302,8 @@ BEGIN
 
   -- If not exists, create new
   IF v_quota IS NULL THEN
-    INSERT INTO quotas (user_id, quota_date, posts_limit, ai_generations_limit)
-    VALUES (p_user_id, CURRENT_DATE, v_limits.daily_posts, v_limits.daily_ai_generations)
+    INSERT INTO quotas (user_id, quota_date, posts_limit, replies_limit, ai_generations_limit)
+    VALUES (p_user_id, CURRENT_DATE, v_limits.daily_posts, v_limits.daily_replies, v_limits.daily_ai_generations)
     RETURNING * INTO v_quota;
   END IF;
 
@@ -416,6 +426,8 @@ BEGIN
     WHEN 'ai_generation' THEN RETURN v_limits.has_ai_generation;
     WHEN 'knowledge_base' THEN RETURN v_limits.has_knowledge_base;
     WHEN 'tracked_accounts' THEN RETURN v_limits.max_tracked_accounts > 0;
+    WHEN 'interest_topics' THEN RETURN v_limits.max_interest_topics > 0;
+    WHEN 'replies' THEN RETURN v_limits.daily_replies > 0;
     ELSE RETURN FALSE;
   END CASE;
 END;
