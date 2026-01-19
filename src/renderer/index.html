@@ -1,0 +1,2062 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Pulsar Desktop</title>
+  <style>
+    :root {
+      --bg: #0f0f0f;
+      --panel: #1a1a1a;
+      --border: #2a2a2a;
+      --text: #e0e0e0;
+      --text-dim: #888;
+      --primary: #6366f1;
+      --primary-hover: #818cf8;
+      --success: #22c55e;
+      --warning: #f59e0b;
+      --error: #ef4444;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    .control-panel {
+      width: 300px;
+      height: 100vh;
+      background: var(--panel);
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      position: fixed;
+      left: 0;
+      top: 0;
+    }
+
+    .header {
+      padding: 12px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .header-right { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+
+    .logo { font-size: 18px; font-weight: 600; color: var(--primary); }
+
+    .user-badge {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 10px;
+      padding: 2px 8px;
+      background: var(--bg);
+      border-radius: 12px;
+      cursor: pointer;
+    }
+
+    .user-badge .tier { color: var(--warning); font-weight: 600; }
+    .user-badge .tier.pro { color: var(--success); }
+
+    .quota-bar {
+      background: var(--bg);
+      border-radius: 6px;
+      padding: 8px 10px;
+      margin-bottom: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 11px;
+    }
+
+    .quota-bar .quota-info { display: flex; align-items: center; gap: 8px; }
+    .quota-bar .quota-count { font-weight: 600; color: var(--primary); }
+    .quota-bar .quota-count.low { color: var(--warning); }
+    .quota-bar .quota-count.empty { color: var(--error); }
+
+    .upgrade-btn {
+      padding: 3px 8px;
+      font-size: 9px;
+      background: linear-gradient(135deg, var(--primary), #8b5cf6);
+      border: none;
+      border-radius: 4px;
+      color: white;
+      cursor: pointer;
+    }
+
+    .login-btn {
+      padding: 4px 10px;
+      font-size: 10px;
+      background: var(--primary);
+      border: none;
+      border-radius: 4px;
+      color: white;
+      cursor: pointer;
+    }
+
+    .persona-badge {
+      background: var(--primary);
+      color: white;
+      padding: 2px 8px;
+      border-radius: 12px;
+      font-size: 10px;
+      font-weight: 500;
+    }
+
+    .nav-tabs {
+      display: flex;
+      border-bottom: 1px solid var(--border);
+      background: var(--bg);
+    }
+
+    .nav-tab {
+      flex: 1;
+      padding: 8px 4px;
+      text-align: center;
+      font-size: 11px;
+      cursor: pointer;
+      border: none;
+      background: transparent;
+      color: var(--text-dim);
+      border-bottom: 2px solid transparent;
+      transition: all 0.2s;
+    }
+
+    .nav-tab:hover { color: var(--text); }
+    .nav-tab.active { color: var(--primary); border-bottom-color: var(--primary); }
+
+    .tab-content {
+      flex: 1;
+      overflow-y: auto;
+      padding: 12px;
+      display: none;
+    }
+
+    .tab-content.active { display: block; }
+
+    .form-group { margin-bottom: 12px; }
+
+    label {
+      display: block;
+      font-size: 11px;
+      color: var(--text-dim);
+      margin-bottom: 4px;
+    }
+
+    textarea, input[type="text"], input[type="datetime-local"], select {
+      width: 100%;
+      padding: 8px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text);
+      font-size: 12px;
+      resize: none;
+    }
+
+    textarea:focus, input:focus, select:focus { outline: none; border-color: var(--primary); }
+
+    .btn {
+      padding: 8px 12px;
+      border: none;
+      border-radius: 6px;
+      font-size: 12px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .btn-primary { background: var(--primary); color: white; }
+    .btn-primary:hover { background: var(--primary-hover); }
+    .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+    .btn-secondary { background: var(--border); color: var(--text); }
+    .btn-secondary:hover { background: #3a3a3a; }
+    .btn-small { padding: 4px 8px; font-size: 10px; }
+
+    .platform-btns { display: flex; gap: 6px; margin-bottom: 12px; }
+
+    .platform-btn {
+      flex: 1;
+      padding: 6px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text-dim);
+      font-size: 10px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .platform-btn.active { border-color: var(--primary); color: var(--primary); }
+
+    .status {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px;
+      background: var(--bg);
+      border-radius: 6px;
+      margin-bottom: 12px;
+      font-size: 11px;
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--error);
+    }
+
+    .status-dot.connected { background: var(--success); }
+
+    .job-list { display: flex; flex-direction: column; gap: 8px; }
+
+    .job-item {
+      padding: 10px;
+      background: var(--bg);
+      border-radius: 6px;
+      border: 1px solid var(--border);
+    }
+
+    .job-item .job-status {
+      font-size: 10px;
+      padding: 2px 6px;
+      border-radius: 4px;
+      display: inline-block;
+      margin-bottom: 4px;
+    }
+
+    .job-item .job-status.pending { background: var(--warning); color: black; }
+    .job-item .job-status.completed { background: var(--success); color: white; }
+    .job-item .job-status.failed { background: var(--error); color: white; }
+    .job-item .job-content { font-size: 11px; color: var(--text); margin-bottom: 4px; word-break: break-word; }
+    .job-item .job-time { font-size: 10px; color: var(--text-dim); }
+
+    .stats-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 12px; }
+
+    .stat-box {
+      background: var(--bg);
+      border-radius: 6px;
+      padding: 8px;
+      text-align: center;
+    }
+
+    .stat-value { font-size: 18px; font-weight: 600; color: var(--primary); }
+    .stat-label { font-size: 9px; color: var(--text-dim); }
+
+    .knowledge-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px;
+      background: var(--bg);
+      border-radius: 6px;
+      margin-bottom: 8px;
+    }
+
+    .knowledge-item .icon { font-size: 16px; }
+    .knowledge-item .info { flex: 1; }
+    .knowledge-item .name { font-size: 12px; font-weight: 500; }
+    .knowledge-item .meta { font-size: 10px; color: var(--text-dim); }
+
+    .ai-output {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 12px;
+      min-height: 100px;
+      font-size: 12px;
+      white-space: pre-wrap;
+      margin-bottom: 12px;
+    }
+
+    /* Onboarding */
+    .onboarding {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 300px;
+      height: 100vh;
+      background: var(--panel);
+      z-index: 100;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .onboarding-content { flex: 1; padding: 16px; overflow-y: auto; }
+    .onboarding h2 { font-size: 16px; margin-bottom: 8px; }
+    .onboarding p { font-size: 12px; color: var(--text-dim); margin-bottom: 16px; }
+
+    .quiz-progress { height: 4px; background: var(--border); border-radius: 2px; margin-bottom: 16px; }
+    .quiz-progress-fill { height: 100%; background: var(--primary); border-radius: 2px; transition: width 0.3s; }
+    .quiz-question { font-size: 13px; margin-bottom: 12px; }
+
+    .quiz-option {
+      display: block;
+      padding: 10px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      margin-bottom: 8px;
+      cursor: pointer;
+      font-size: 12px;
+      transition: all 0.2s;
+    }
+
+    .quiz-option:hover { border-color: var(--primary); }
+    .quiz-option.selected { border-color: var(--primary); background: rgba(99, 102, 241, 0.1); }
+
+    .persona-result { background: var(--bg); border-radius: 8px; padding: 12px; margin-bottom: 16px; }
+    .persona-result h3 { font-size: 14px; margin-bottom: 8px; display: flex; align-items: center; gap: 8px; }
+    .traits { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 8px; }
+    .trait { background: var(--border); padding: 2px 8px; border-radius: 12px; font-size: 10px; }
+
+    .toast-container { position: fixed; bottom: 20px; left: 20px; z-index: 1000; }
+
+    .toast {
+      padding: 10px 16px;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      margin-top: 8px;
+      font-size: 12px;
+      animation: slideIn 0.3s ease;
+    }
+
+    .toast.success { border-color: var(--success); }
+    .toast.error { border-color: var(--error); }
+
+    @keyframes slideIn {
+      from { opacity: 0; transform: translateY(20px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .empty-state { text-align: center; padding: 24px; color: var(--text-dim); font-size: 12px; }
+
+    .section-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+    .section-title { font-size: 12px; font-weight: 600; }
+
+    .checkbox-label { display: flex; align-items: center; gap: 6px; font-size: 11px; cursor: pointer; }
+    .checkbox-label input { width: auto; }
+
+    .hidden-input { display: none; }
+
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: var(--bg); }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: #444; }
+  </style>
+</head>
+<body>
+  <!-- Onboarding -->
+  <div class="onboarding" id="onboarding" style="display: none;">
+    <div class="header"><span class="logo">Pulsar</span></div>
+    <div class="onboarding-content">
+      <div id="step-welcome" class="onboarding-step">
+        <h2>Welcome to Pulsar</h2>
+        <p>Let's create your AI writing persona based on your personality.</p>
+        <div style="background: var(--bg); padding: 12px; border-radius: 8px; margin-bottom: 16px;">
+          <p style="font-size: 11px; margin-bottom: 8px;">How it works:</p>
+          <p style="font-size: 11px; margin-bottom: 4px;">1. Answer 16 quick questions</p>
+          <p style="font-size: 11px; margin-bottom: 4px;">2. We determine your writing style</p>
+          <p style="font-size: 11px;">3. AI generates content matching your voice</p>
+        </div>
+        <button class="btn btn-primary" style="width: 100%;" onclick="startQuiz()">Start Personality Quiz</button>
+        <p style="text-align: center; margin-top: 8px; font-size: 10px;">Takes about 2 minutes</p>
+      </div>
+
+      <div id="step-quiz" class="onboarding-step" style="display: none;">
+        <div class="quiz-progress"><div class="quiz-progress-fill" id="quiz-progress" style="width: 0%"></div></div>
+        <p id="quiz-number" style="font-size: 10px; margin-bottom: 12px;">Question 1 of 16</p>
+        <div id="quiz-question" class="quiz-question"></div>
+        <div id="quiz-options"></div>
+        <button class="btn btn-secondary" id="quiz-back" onclick="prevQuestion()" style="margin-top: 12px;" disabled>Back</button>
+      </div>
+
+      <div id="step-info" class="onboarding-step" style="display: none;">
+        <h2>Almost done!</h2>
+        <p>Add some details to personalize your content further.</p>
+        <div class="form-group">
+          <label>Your name (optional)</label>
+          <input type="text" id="persona-name" placeholder="How should we address you?">
+        </div>
+        <div class="form-group">
+          <label>Your expertise (comma-separated)</label>
+          <input type="text" id="persona-expertise" placeholder="e.g., Product, AI, Startups">
+        </div>
+        <div class="form-group">
+          <label>Your interests (comma-separated)</label>
+          <input type="text" id="persona-interests" placeholder="e.g., Coffee, Running, Tech">
+        </div>
+        <button class="btn btn-primary" style="width: 100%;" onclick="completeSetup()">Create My Persona</button>
+      </div>
+
+      <div id="step-complete" class="onboarding-step" style="display: none;">
+        <h2>Your persona is ready!</h2>
+        <div class="persona-result" id="persona-result"></div>
+        <button class="btn btn-primary" style="width: 100%;" onclick="finishOnboarding()">Start Creating Content</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Main Control Panel -->
+  <div class="control-panel" id="main-panel">
+    <div class="header">
+      <span class="logo">Pulsar</span>
+      <span class="persona-badge" id="header-persona-badge" style="display: none;"></span>
+      <div class="header-right">
+        <div class="user-badge" id="user-badge" style="display: none;" onclick="showAccountMenu()">
+          <span id="user-email"></span>
+          <span class="tier" id="user-tier">FREE</span>
+        </div>
+        <button class="login-btn" id="login-btn" onclick="handleLogin()">Login</button>
+      </div>
+    </div>
+
+    <div class="nav-tabs">
+      <button class="nav-tab active" data-tab="compose">Compose</button>
+      <button class="nav-tab" data-tab="schedule">Schedule</button>
+      <button class="nav-tab" data-tab="tracked">Tracked</button>
+      <button class="nav-tab" data-tab="engage">Engage</button>
+      <button class="nav-tab" data-tab="ai">AI</button>
+      <button class="nav-tab" data-tab="settings">Settings</button>
+    </div>
+
+    <!-- Compose Tab -->
+    <div class="tab-content active" id="tab-compose">
+      <!-- Quota Bar -->
+      <div class="quota-bar" id="quota-bar">
+        <div class="quota-info">
+          <span>Today:</span>
+          <span class="quota-count" id="quota-count">3/3</span>
+          <span>posts left</span>
+        </div>
+        <button class="upgrade-btn" id="upgrade-btn" onclick="handleUpgrade()" style="display: none;">Upgrade</button>
+      </div>
+
+      <div class="status">
+        <span class="status-dot" id="status-dot"></span>
+        <span id="status-text">Checking connection...</span>
+      </div>
+
+      <div class="platform-btns">
+        <button class="platform-btn active" data-platform="twitter">X</button>
+        <button class="platform-btn" data-platform="linkedin">LinkedIn</button>
+        <button class="platform-btn" data-platform="threads">Threads</button>
+        <button class="btn btn-small btn-secondary" style="margin-left: auto; padding: 4px 8px;" onclick="refreshBrowser()" title="Refresh">↻</button>
+      </div>
+
+      <div class="form-group">
+        <label>Content</label>
+        <textarea id="content" rows="6" placeholder="What's on your mind?"></textarea>
+        <div style="display: flex; justify-content: space-between; margin-top: 4px;">
+          <span style="font-size: 10px; color: var(--text-dim);" id="char-count">0 / 280</span>
+          <button class="btn btn-small btn-secondary" onclick="improveContent()">Improve</button>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label class="checkbox-label">
+          <input type="checkbox" id="schedule-toggle">
+          <span>Schedule for later</span>
+        </label>
+        <input type="datetime-local" id="schedule-time" style="margin-top: 6px; display: none;">
+      </div>
+
+      <button class="btn btn-primary" style="width: 100%;" id="post-btn" onclick="postContent()">Post Now</button>
+    </div>
+
+    <!-- Schedule Tab -->
+    <div class="tab-content" id="tab-schedule">
+      <div class="section-header">
+        <span class="section-title">Scheduled Posts</span>
+        <button class="btn btn-small btn-secondary" onclick="clearCompleted()">Clear Done</button>
+      </div>
+
+      <div class="stats-row">
+        <div class="stat-box"><div class="stat-value" id="stat-pending">0</div><div class="stat-label">Pending</div></div>
+        <div class="stat-box"><div class="stat-value" id="stat-processing">0</div><div class="stat-label">Running</div></div>
+        <div class="stat-box"><div class="stat-value" id="stat-completed">0</div><div class="stat-label">Done</div></div>
+        <div class="stat-box"><div class="stat-value" id="stat-failed">0</div><div class="stat-label">Failed</div></div>
+      </div>
+
+      <div class="job-list" id="job-list"><div class="empty-state">No scheduled posts</div></div>
+    </div>
+
+    <!-- Tracked Accounts Tab -->
+    <div class="tab-content" id="tab-tracked">
+      <div class="section-header">
+        <span class="section-title">Tracked Accounts</span>
+        <button class="btn btn-small btn-primary" id="add-tracked-btn" onclick="addTrackedAccount()">+ Add</button>
+      </div>
+
+      <p style="font-size: 11px; color: var(--text-dim); margin-bottom: 12px;">
+        Follow KOLs to boost engagement. Higher tier = higher priority.
+      </p>
+
+      <div class="stats-row" style="grid-template-columns: repeat(3, 1fr);">
+        <div class="stat-box"><div class="stat-value" id="tracked-total">0</div><div class="stat-label">Total</div></div>
+        <div class="stat-box"><div class="stat-value" id="tracked-defaults">0</div><div class="stat-label">Defaults</div></div>
+        <div class="stat-box"><div class="stat-value" id="tracked-custom">0</div><div class="stat-label">Custom</div></div>
+      </div>
+
+      <div class="form-group">
+        <input type="text" id="tracked-search" placeholder="Search accounts..." oninput="searchTrackedAccounts()">
+      </div>
+
+      <div id="tracked-list" class="job-list"><div class="empty-state">Loading tracked accounts...</div></div>
+
+      <div id="tracked-upgrade-cta" style="display: none; text-align: center; padding: 16px; background: var(--bg); border-radius: 8px; margin-top: 12px;">
+        <p style="font-size: 12px; margin-bottom: 8px;">Add custom accounts with Pro</p>
+        <button class="btn btn-primary btn-small" onclick="handleUpgrade()">Upgrade to Pro</button>
+      </div>
+    </div>
+
+    <!-- Engage Tab -->
+    <div class="tab-content" id="tab-engage">
+      <div class="section-header">
+        <span class="section-title">Smart Engagement</span>
+        <button class="btn btn-small btn-primary" onclick="findPostsToEngage()">🔍 Find Posts</button>
+      </div>
+
+      <p style="font-size: 11px; color: var(--text-dim); margin-bottom: 12px;">
+        AI finds relevant posts based on your interests. Reply to grow your audience.
+      </p>
+
+      <!-- Interest Tags -->
+      <div class="form-group">
+        <label>Your Interests (comma-separated)</label>
+        <input type="text" id="engage-interests" placeholder="AI, startups, DevTools, Web3...">
+        <div id="interest-tags" style="display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px;"></div>
+      </div>
+
+      <!-- Target Audience -->
+      <div class="form-group">
+        <label>Target Audience</label>
+        <select id="engage-audience">
+          <option value="all">Everyone</option>
+          <option value="founders">Founders & Entrepreneurs</option>
+          <option value="engineers">Engineers & Developers</option>
+          <option value="investors">VCs & Investors</option>
+          <option value="creators">Content Creators</option>
+        </select>
+      </div>
+
+      <!-- Engagement Settings -->
+      <div style="display: flex; gap: 8px; margin-bottom: 12px;">
+        <label class="checkbox-label"><input type="checkbox" id="engage-use-persona" checked><span>Use Persona</span></label>
+        <label class="checkbox-label"><input type="checkbox" id="engage-use-kb"><span>Use KB</span></label>
+      </div>
+
+      <!-- Stats -->
+      <div class="stats-row" style="grid-template-columns: repeat(3, 1fr); margin-bottom: 12px;">
+        <div class="stat-box"><div class="stat-value" id="engage-found">0</div><div class="stat-label">Found</div></div>
+        <div class="stat-box"><div class="stat-value" id="engage-replied">0</div><div class="stat-label">Replied</div></div>
+        <div class="stat-box"><div class="stat-value" id="engage-today">0</div><div class="stat-label">Today</div></div>
+      </div>
+
+      <!-- Post List -->
+      <div id="engage-posts" class="job-list">
+        <div class="empty-state">
+          <p>Set your interests and click "Find Posts"</p>
+          <p style="font-size: 10px; margin-top: 4px;">AI will find relevant posts for you to engage with</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- AI Tab -->
+    <div class="tab-content" id="tab-ai">
+      <div class="form-group">
+        <label>What do you want to post about?</label>
+        <textarea id="ai-topic" rows="3" placeholder="Describe your topic..."></textarea>
+      </div>
+
+      <div style="display: flex; gap: 8px; margin-bottom: 12px;">
+        <label class="checkbox-label"><input type="checkbox" id="use-persona" checked><span>Use Persona</span></label>
+        <label class="checkbox-label"><input type="checkbox" id="use-kb"><span>Use KB</span></label>
+      </div>
+
+      <div style="display: flex; gap: 8px; margin-bottom: 12px;">
+        <button class="btn btn-primary" style="flex: 1;" onclick="generateContent()">Generate</button>
+        <button class="btn btn-secondary" onclick="generateVariations()">Variants</button>
+      </div>
+
+      <div class="form-group">
+        <label>Generated Content</label>
+        <div class="ai-output" id="ai-output">Generated content will appear here...</div>
+      </div>
+
+      <button class="btn btn-secondary" style="width: 100%;" onclick="useGeneratedContent()">Use This Content</button>
+    </div>
+
+    <!-- Settings Tab -->
+    <div class="tab-content" id="tab-settings">
+      <!-- Subscription Section -->
+      <div class="section-header">
+        <span class="section-title">Subscription</span>
+      </div>
+
+      <div id="subscription-info" style="background: var(--bg); padding: 12px; border-radius: 6px; margin-bottom: 16px;">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+          <div>
+            <p style="font-size: 12px; font-weight: 600;" id="sub-tier-display">Free Plan</p>
+            <p style="font-size: 10px; color: var(--text-dim);" id="sub-detail">3 posts/day</p>
+          </div>
+          <button class="btn btn-small btn-primary" id="sub-action-btn" onclick="handleSubscriptionAction()">Upgrade</button>
+        </div>
+      </div>
+
+      <!-- AI Provider Settings -->
+      <div class="section-header">
+        <span class="section-title">AI Provider</span>
+      </div>
+
+      <div id="ai-provider-section">
+        <!-- Provider Selection -->
+        <div class="form-group">
+          <label>Select Provider</label>
+          <select id="ai-provider-select" onchange="handleProviderChange()">
+            <option value="none">-- Select --</option>
+            <option value="webllm">Local Model (WebLLM)</option>
+            <option value="byok">Bring Your Own Key</option>
+            <option value="cliproxy">Pro Backend</option>
+          </select>
+        </div>
+
+        <!-- Provider Status -->
+        <div id="ai-provider-status" style="background: var(--bg); padding: 12px; border-radius: 6px; margin-bottom: 12px;">
+          <p style="font-size: 11px; color: var(--text-dim);">No AI provider configured</p>
+        </div>
+
+        <!-- WebLLM Config (hidden by default) -->
+        <div id="webllm-config" style="display: none;">
+          <div class="form-group">
+            <label>Local Model</label>
+            <select id="webllm-model-select">
+              <option value="Qwen2.5-3B-Instruct-q4f16_1-MLC">Qwen 2.5 3B (2.1GB) - Recommended</option>
+              <option value="Phi-3.5-mini-instruct-q4f16_1-MLC">Phi 3.5 Mini (2.4GB)</option>
+              <option value="SmolLM2-1.7B-Instruct-q4f16_1-MLC">SmolLM2 1.7B (1.1GB) - Lightweight</option>
+              <option value="Llama-3.2-3B-Instruct-q4f16_1-MLC">Llama 3.2 3B (2.0GB)</option>
+            </select>
+          </div>
+          <div id="webllm-download-progress" style="display: none; margin-bottom: 12px;">
+            <div style="background: var(--border); border-radius: 4px; height: 8px; overflow: hidden;">
+              <div id="webllm-progress-bar" style="background: var(--primary); height: 100%; width: 0%; transition: width 0.3s;"></div>
+            </div>
+            <p style="font-size: 10px; color: var(--text-dim); margin-top: 4px;" id="webllm-progress-text">Downloading...</p>
+          </div>
+          <button class="btn btn-secondary" style="width: 100%;" id="webllm-action-btn" onclick="handleWebLLMAction()">Download & Activate</button>
+        </div>
+
+        <!-- BYOK Config (hidden by default) -->
+        <div id="byok-config" style="display: none;">
+          <div class="form-group">
+            <label>Service</label>
+            <select id="byok-service-select" onchange="updateBYOKModels()">
+              <option value="openai">OpenAI</option>
+              <option value="anthropic">Anthropic</option>
+              <option value="gemini">Google Gemini</option>
+              <option value="openrouter">OpenRouter (Free models available)</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>API Key <a href="#" id="byok-key-link" onclick="openBYOKKeyPage()" style="font-size: 10px; color: var(--primary);">(Get key)</a></label>
+            <input type="password" id="byok-api-key" placeholder="sk-...">
+          </div>
+          <div class="form-group">
+            <label>Model</label>
+            <select id="byok-model-select">
+              <option value="gpt-4o-mini">GPT-4o Mini</option>
+            </select>
+          </div>
+          <button class="btn btn-secondary" style="width: 100%;" onclick="testAndActivateBYOK()">Test & Activate</button>
+        </div>
+
+        <!-- CLIProxy Config (hidden by default) -->
+        <div id="cliproxy-config" style="display: none;">
+          <div id="cliproxy-pro-notice" style="background: rgba(139, 92, 246, 0.1); border: 1px solid rgba(139, 92, 246, 0.3); padding: 12px; border-radius: 6px; margin-bottom: 12px;">
+            <p style="font-size: 11px; color: var(--primary);">Pro Feature: Backend AI with premium models</p>
+          </div>
+          <div class="form-group">
+            <label>Model</label>
+            <select id="cliproxy-model-select">
+              <option value="gemini-2.0-flash">Gemini 2.0 Flash</option>
+              <option value="gemini-2.0-flash-thinking">Gemini 2.0 Flash Thinking</option>
+              <option value="claude-3-5-sonnet">Claude 3.5 Sonnet</option>
+            </select>
+          </div>
+          <button class="btn btn-primary" style="width: 100%;" onclick="activateCLIProxy()">Activate</button>
+        </div>
+      </div>
+
+      <!-- Persona Section -->
+      <div class="section-header">
+        <span class="section-title">Persona</span>
+        <button class="btn btn-small btn-secondary" onclick="resetPersona()">Reset</button>
+      </div>
+
+      <div id="persona-info" style="background: var(--bg); padding: 12px; border-radius: 6px; margin-bottom: 12px;">
+        <p style="font-size: 12px; color: var(--text-dim);">No persona configured</p>
+      </div>
+
+      <!-- Knowledge Base Section -->
+      <div class="section-header">
+        <span class="section-title">Knowledge Base</span>
+        <button class="btn btn-small btn-secondary" onclick="clearKnowledgeBase()">Clear</button>
+      </div>
+
+      <div id="kb-info" style="background: var(--bg); padding: 12px; border-radius: 6px; margin-bottom: 12px;">
+        <p style="font-size: 11px; color: var(--text-dim);">Loading...</p>
+      </div>
+
+      <div style="display: flex; gap: 8px; margin-bottom: 8px;">
+        <input type="text" id="kb-url-input" placeholder="Enter URL to add..." style="flex: 1;">
+        <button class="btn btn-small btn-primary" onclick="addKBUrl()">Add URL</button>
+      </div>
+
+      <div style="display: flex; gap: 8px; margin-bottom: 16px;">
+        <input type="file" id="kb-file-input" accept=".md,.txt,.pdf" style="display: none;" onchange="handleKBFileSelect(event)">
+        <button class="btn btn-small btn-secondary" style="flex: 1;" onclick="document.getElementById('kb-file-input').click()">
+          📄 Upload File (.md, .txt, .pdf)
+        </button>
+      </div>
+
+      <div id="kb-documents" style="max-height: 150px; overflow-y: auto; margin-bottom: 12px;">
+        <!-- Documents will be listed here -->
+      </div>
+
+      <!-- Account Section -->
+      <div class="section-header">
+        <span class="section-title">Account</span>
+      </div>
+
+      <div id="account-section">
+        <button class="btn btn-secondary" style="width: 100%; margin-bottom: 8px;" id="logout-btn" onclick="handleLogout()" style="display: none;">Logout</button>
+      </div>
+
+      <p style="font-size: 10px; color: var(--text-dim); text-align: center; margin-top: 16px;">Pulsar Desktop v1.0.0</p>
+    </div>
+  </div>
+
+  <div class="toast-container" id="toast-container"></div>
+
+  <!-- WebLLM Engine (ES Module) -->
+  <script type="module" src="webllm-engine.js"></script>
+
+  <script>
+    let currentPlatform = 'twitter';
+    let mbtiAnswers = {};
+    let currentQuestion = 0;
+    let mbtiQuestions = [];
+    let generatedContent = '';
+    let currentUser = null;
+    let currentTier = 'free';
+    let trackedAccountsData = null;
+    const CHAR_LIMITS = { twitter: 280, linkedin: 3000, threads: 500 };
+
+    document.addEventListener('DOMContentLoaded', async () => {
+      console.log('[Pulsar UI] DOMContentLoaded');
+      const hasPersona = await window.pulsar.personaExists();
+      console.log('[Pulsar UI] hasPersona:', hasPersona);
+      if (!hasPersona) { showOnboarding(); } else { hideOnboarding(); loadPersonaInfo(); }
+
+      setupTabs();
+      setupPlatformButtons();
+      setupContentEditor();
+      setupScheduleToggle();
+
+      // Initialize auth and quota
+      await updateAuthState();
+      await updateQuotaDisplay();
+      await loadTrackedAccounts();
+      await loadKBInfo();
+
+      updateLoginStatus();
+      loadScheduledJobs();
+
+      // Listen for auth state changes
+      window.pulsar.onAuthStateChanged((data) => {
+        currentUser = data.user;
+        updateAuthUI();
+        updateQuotaDisplay();
+      });
+
+      window.pulsar.onSchedulerUpdate((jobs) => { renderJobList(jobs); updateStats(jobs); });
+      setInterval(updateLoginStatus, 10000);
+      setInterval(updateQuotaDisplay, 60000); // Refresh quota every minute
+    });
+
+    function showOnboarding() { document.getElementById('onboarding').style.display = 'flex'; document.getElementById('main-panel').style.display = 'none'; }
+    function hideOnboarding() { document.getElementById('onboarding').style.display = 'none'; document.getElementById('main-panel').style.display = 'flex'; }
+
+    async function startQuiz() {
+      mbtiQuestions = await window.pulsar.getMBTIQuestions();
+      document.getElementById('step-welcome').style.display = 'none';
+      document.getElementById('step-quiz').style.display = 'block';
+      showQuestion(0);
+    }
+
+    function showQuestion(index) {
+      currentQuestion = index;
+      const question = mbtiQuestions[index];
+      const progress = ((index + 1) / mbtiQuestions.length) * 100;
+      document.getElementById('quiz-progress').style.width = `${progress}%`;
+      document.getElementById('quiz-number').textContent = `Question ${index + 1} of ${mbtiQuestions.length}`;
+      document.getElementById('quiz-question').textContent = question.question;
+      document.getElementById('quiz-options').innerHTML = question.options.map(opt => `
+        <div class="quiz-option ${mbtiAnswers[question.id] === opt.value ? 'selected' : ''}" onclick="selectAnswer('${question.id}', '${opt.value}')">${opt.text}</div>
+      `).join('');
+      document.getElementById('quiz-back').disabled = index === 0;
+    }
+
+    function selectAnswer(questionId, value) {
+      mbtiAnswers[questionId] = value;
+      document.querySelectorAll('.quiz-option').forEach(opt => opt.classList.remove('selected'));
+      event.target.classList.add('selected');
+      setTimeout(() => {
+        if (currentQuestion < mbtiQuestions.length - 1) { showQuestion(currentQuestion + 1); }
+        else { document.getElementById('step-quiz').style.display = 'none'; document.getElementById('step-info').style.display = 'block'; }
+      }, 300);
+    }
+
+    function prevQuestion() { if (currentQuestion > 0) showQuestion(currentQuestion - 1); }
+
+    async function completeSetup() {
+      const name = document.getElementById('persona-name').value.trim();
+      const expertise = document.getElementById('persona-expertise').value.split(',').map(s => s.trim()).filter(Boolean);
+      const interests = document.getElementById('persona-interests').value.split(',').map(s => s.trim()).filter(Boolean);
+      try {
+        const persona = await window.pulsar.createPersona(mbtiAnswers, { name, expertise, interests });
+        const profile = persona.rootPersona.profile;
+        document.getElementById('persona-result').innerHTML = `
+          <h3>${profile.name} <span class="persona-badge">${persona.rootPersona.mbtiType}</span></h3>
+          <div class="traits">${profile.traits.map(t => `<span class="trait">${t}</span>`).join('')}</div>
+          <p style="font-size: 11px; margin-top: 8px;"><strong>Tone:</strong> ${profile.writingStyle.tone}</p>
+          <p style="font-size: 10px; color: var(--text-dim); margin-top: 8px;">${profile.socialMediaTips}</p>
+        `;
+        document.getElementById('step-info').style.display = 'none';
+        document.getElementById('step-complete').style.display = 'block';
+      } catch (error) { showToast('Failed to create persona: ' + error.message, 'error'); }
+    }
+
+    function finishOnboarding() { hideOnboarding(); loadPersonaInfo(); }
+
+    async function loadPersonaInfo() {
+      console.log('[Pulsar UI] loadPersonaInfo called');
+      const persona = await window.pulsar.getPersona();
+      console.log('[Pulsar UI] persona:', persona);
+      if (persona && persona.rootPersona) {
+        const profile = persona.rootPersona.profile;
+        document.getElementById('header-persona-badge').textContent = persona.rootPersona.mbtiType;
+        document.getElementById('header-persona-badge').style.display = 'inline';
+        document.getElementById('persona-info').innerHTML = `
+          <p style="font-size: 12px; font-weight: 500;">${profile.name} (${persona.rootPersona.mbtiType})</p>
+          <p style="font-size: 10px; color: var(--text-dim);">${profile.writingStyle.tone}</p>
+        `;
+      }
+    }
+
+    async function resetPersona() {
+      if (confirm('Reset your persona? You will need to retake the quiz.')) {
+        await window.pulsar.deletePersona();
+        document.getElementById('header-persona-badge').style.display = 'none';
+        mbtiAnswers = {}; currentQuestion = 0;
+        document.getElementById('step-welcome').style.display = 'block';
+        document.getElementById('step-quiz').style.display = 'none';
+        document.getElementById('step-info').style.display = 'none';
+        document.getElementById('step-complete').style.display = 'none';
+        showOnboarding();
+      }
+    }
+
+    // ============================================
+    // Knowledge Base Functions
+    // ============================================
+
+    async function loadKBInfo() {
+      try {
+        const stats = await window.pulsar.getKnowledgeDocuments();
+        const kbInfo = document.getElementById('kb-info');
+        const docCount = stats?.documentCount || 0;
+
+        if (docCount === 0) {
+          kbInfo.innerHTML = `<p style="font-size: 11px; color: var(--text-dim);">No documents. Add URLs to build your knowledge base.</p>`;
+        } else {
+          const totalSize = stats.totalSize || 0;
+          kbInfo.innerHTML = `
+            <p style="font-size: 12px; font-weight: 500;">${docCount} document${docCount > 1 ? 's' : ''}</p>
+            <p style="font-size: 10px; color: var(--text-dim);">${(totalSize / 1000).toFixed(1)}K characters</p>
+          `;
+        }
+        renderKBDocuments(stats?.documents || []);
+      } catch (err) {
+        console.error('[KB] Failed to load:', err);
+        document.getElementById('kb-info').innerHTML = `<p style="font-size: 11px; color: var(--error);">Failed to load KB</p>`;
+      }
+    }
+
+    function renderKBDocuments(docs) {
+      const container = document.getElementById('kb-documents');
+      if (!docs || docs.length === 0) {
+        container.innerHTML = '';
+        return;
+      }
+      container.innerHTML = docs.map(doc => `
+        <div style="display: flex; justify-content: space-between; align-items: center; padding: 6px 8px; background: var(--bg); border-radius: 4px; margin-bottom: 4px;">
+          <span style="font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1;" title="${doc.name}">${doc.name}</span>
+          <button class="btn btn-small" style="padding: 2px 6px; font-size: 10px;" onclick="removeKBDocument('${doc.id}')">×</button>
+        </div>
+      `).join('');
+    }
+
+    async function addKBUrl() {
+      const input = document.getElementById('kb-url-input');
+      const url = input.value.trim();
+      if (!url) return;
+
+      try {
+        // Simple URL validation
+        new URL(url);
+      } catch {
+        showToast('Please enter a valid URL', 'error');
+        return;
+      }
+
+      showToast('Fetching content...', 'info');
+
+      try {
+        // Fetch URL content via main process
+        const response = await fetch(url);
+        const html = await response.text();
+
+        // Extract text content (basic)
+        const doc = new DOMParser().parseFromString(html, 'text/html');
+        const title = doc.querySelector('title')?.textContent || url;
+        const content = doc.body?.textContent?.replace(/\s+/g, ' ').trim().slice(0, 50000) || '';
+
+        if (content.length < 100) {
+          showToast('Could not extract meaningful content', 'error');
+          return;
+        }
+
+        await window.pulsar.addKnowledgeDocument(title, content, { source: url });
+        input.value = '';
+        showToast('Document added!', 'success');
+        loadKBInfo();
+      } catch (err) {
+        console.error('[KB] Failed to add URL:', err);
+        showToast('Failed to fetch URL: ' + err.message, 'error');
+      }
+    }
+
+    async function removeKBDocument(docId) {
+      try {
+        await window.pulsar.removeKnowledgeDocument(docId);
+        showToast('Document removed', 'success');
+        loadKBInfo();
+      } catch (err) {
+        console.error('[KB] Failed to remove:', err);
+        showToast('Failed to remove document', 'error');
+      }
+    }
+
+    async function clearKnowledgeBase() {
+      if (!confirm('Clear all knowledge base documents?')) return;
+      try {
+        await window.pulsar.clearKnowledgeBase();
+        showToast('Knowledge base cleared', 'success');
+        loadKBInfo();
+      } catch (err) {
+        console.error('[KB] Failed to clear:', err);
+        showToast('Failed to clear KB', 'error');
+      }
+    }
+
+    async function handleKBFileSelect(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+
+      const fileName = file.name;
+      const ext = fileName.split('.').pop().toLowerCase();
+
+      showToast('Processing file...', 'info');
+
+      try {
+        let content = '';
+
+        if (ext === 'pdf') {
+          // For PDF, use IPC to read via main process
+          const arrayBuffer = await file.arrayBuffer();
+          const uint8Array = new Uint8Array(arrayBuffer);
+          content = await window.pulsar.parsePDFContent(Array.from(uint8Array));
+        } else {
+          // For md/txt, read as text directly
+          content = await file.text();
+        }
+
+        if (!content || content.length < 10) {
+          showToast('Could not extract content from file', 'error');
+          return;
+        }
+
+        // Truncate if too long
+        if (content.length > 100000) {
+          content = content.slice(0, 100000);
+          showToast('Content truncated to 100K chars', 'info');
+        }
+
+        await window.pulsar.addKnowledgeDocument(fileName, content, { source: 'file', fileType: ext });
+        showToast('Document added!', 'success');
+        loadKBInfo();
+      } catch (err) {
+        console.error('[KB] Failed to process file:', err);
+        showToast('Failed to process file: ' + err.message, 'error');
+      }
+
+      // Reset file input
+      event.target.value = '';
+    }
+
+    function setupTabs() {
+      document.querySelectorAll('.nav-tab').forEach(tab => {
+        tab.addEventListener('click', () => {
+          const tabId = tab.dataset.tab;
+          document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+          document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+          tab.classList.add('active');
+          document.getElementById(`tab-${tabId}`).classList.add('active');
+        });
+      });
+    }
+
+    function setupPlatformButtons() {
+      document.querySelectorAll('.platform-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          document.querySelectorAll('.platform-btn').forEach(b => b.classList.remove('active'));
+          btn.classList.add('active');
+          currentPlatform = btn.dataset.platform;
+          updateCharCount();
+        });
+      });
+    }
+
+    function setupContentEditor() { document.getElementById('content').addEventListener('input', updateCharCount); }
+
+    function updateCharCount() {
+      const content = document.getElementById('content').value;
+      const limit = CHAR_LIMITS[currentPlatform] || 280;
+      const countEl = document.getElementById('char-count');
+      countEl.textContent = `${content.length} / ${limit}`;
+      countEl.style.color = content.length > limit ? 'var(--error)' : 'var(--text-dim)';
+    }
+
+    function setupScheduleToggle() {
+      const toggle = document.getElementById('schedule-toggle');
+      const timeInput = document.getElementById('schedule-time');
+      const postBtn = document.getElementById('post-btn');
+      toggle.addEventListener('change', () => {
+        timeInput.style.display = toggle.checked ? 'block' : 'none';
+        postBtn.textContent = toggle.checked ? 'Schedule Post' : 'Post Now';
+        if (toggle.checked) { const now = new Date(); now.setHours(now.getHours() + 1); timeInput.value = now.toISOString().slice(0, 16); }
+      });
+    }
+
+    async function postContent() {
+      const content = document.getElementById('content').value.trim();
+      if (!content) { showToast('Please enter some content', 'error'); return; }
+      const isScheduled = document.getElementById('schedule-toggle').checked;
+      const postBtn = document.getElementById('post-btn');
+      postBtn.disabled = true; postBtn.textContent = isScheduled ? 'Scheduling...' : 'Posting...';
+      try {
+        if (isScheduled) {
+          const scheduledAt = new Date(document.getElementById('schedule-time').value).getTime();
+          await window.pulsar.schedulePost(currentPlatform, content, scheduledAt);
+          showToast('Post scheduled!', 'success');
+          document.getElementById('content').value = ''; updateCharCount(); loadScheduledJobs();
+        } else {
+          if (currentPlatform === 'twitter') {
+            const result = await window.pulsar.postToTwitter(content);
+            if (result.success) { showToast('Posted successfully!', 'success'); document.getElementById('content').value = ''; updateCharCount(); }
+            else { showToast('Post failed: ' + (result.error || 'Unknown error'), 'error'); }
+          } else { showToast('Platform not yet supported', 'error'); }
+        }
+      } catch (error) { showToast('Error: ' + error.message, 'error'); }
+      finally { postBtn.disabled = false; postBtn.textContent = isScheduled ? 'Schedule Post' : 'Post Now'; }
+    }
+
+    async function improveContent() {
+      const content = document.getElementById('content').value.trim();
+      if (!content) { showToast('Please enter some content first', 'error'); return; }
+      try {
+        const result = await window.pulsar.improveContent(content, currentPlatform);
+        if (result.success && result.content) { document.getElementById('content').value = result.content; updateCharCount(); showToast('Content improved!', 'success'); }
+        else { showToast('Failed to improve: ' + (result.error || 'Unknown error'), 'error'); }
+      } catch (error) { showToast('Error: ' + error.message, 'error'); }
+    }
+
+    async function refreshBrowser() {
+      showToast('Refreshing...', 'info');
+      await window.pulsar.refreshBrowserView();
+    }
+
+    async function updateLoginStatus() {
+      try {
+        const result = await window.pulsar.checkLoginStatus(currentPlatform);
+        const dot = document.getElementById('status-dot');
+        const text = document.getElementById('status-text');
+        if (result.loggedIn) { dot.classList.add('connected'); text.textContent = `${currentPlatform} connected`; }
+        else { dot.classList.remove('connected'); text.textContent = `${currentPlatform} not logged in`; }
+      } catch (error) { console.error('Status check failed:', error); }
+    }
+
+    async function loadScheduledJobs() {
+      const jobs = await window.pulsar.getScheduledJobs();
+      renderJobList(jobs); updateStats(jobs);
+    }
+
+    function renderJobList(jobs) {
+      const container = document.getElementById('job-list');
+      if (!jobs || jobs.length === 0) { container.innerHTML = '<div class="empty-state">No scheduled posts</div>'; return; }
+      container.innerHTML = jobs.map(job => `
+        <div class="job-item">
+          <span class="job-status ${job.status}">${job.status}</span>
+          <div class="job-content">${escapeHtml(job.content).substring(0, 100)}${job.content.length > 100 ? '...' : ''}</div>
+          <div class="job-time">${new Date(job.scheduledAt).toLocaleString()}</div>
+        </div>
+      `).join('');
+    }
+
+    function updateStats(jobs) {
+      const stats = { pending: 0, processing: 0, completed: 0, failed: 0 };
+      if (jobs) { jobs.forEach(job => { if (stats[job.status] !== undefined) stats[job.status]++; }); }
+      document.getElementById('stat-pending').textContent = stats.pending;
+      document.getElementById('stat-processing').textContent = stats.processing;
+      document.getElementById('stat-completed').textContent = stats.completed;
+      document.getElementById('stat-failed').textContent = stats.failed;
+    }
+
+    async function clearCompleted() {
+      await window.pulsar.clearCompletedJobs(); loadScheduledJobs(); showToast('Completed jobs cleared', 'success');
+    }
+
+    function setupKnowledgeUpload() {
+      const fileInput = document.getElementById('knowledge-file');
+      fileInput.addEventListener('change', async (e) => {
+        for (const file of e.target.files) {
+          if (file.name.endsWith('.md') || file.name.endsWith('.txt')) {
+            const content = await file.text();
+            await window.pulsar.addKnowledgeDocument(file.name, content);
+            showToast(`Added: ${file.name}`, 'success');
+          } else { showToast('Only .md and .txt files supported', 'error'); }
+        }
+        fileInput.value = ''; loadKnowledgeDocuments();
+      });
+    }
+
+    function addKnowledge() { document.getElementById('knowledge-file').click(); }
+
+    async function loadKnowledgeDocuments() {
+      const stats = await window.pulsar.getKnowledgeDocuments();
+      const container = document.getElementById('knowledge-list');
+      if (!stats.documents || stats.documents.length === 0) { container.innerHTML = '<div class="empty-state">No documents added yet</div>'; return; }
+      container.innerHTML = stats.documents.map(doc => `
+        <div class="knowledge-item">
+          <span class="icon">📄</span>
+          <div class="info"><div class="name">${escapeHtml(doc.name)}</div><div class="meta">${formatBytes(doc.size)} · ${doc.chunkCount} chunks</div></div>
+          <button class="btn btn-small btn-secondary" onclick="removeKnowledge('${doc.id}')">×</button>
+        </div>
+      `).join('');
+    }
+
+    async function removeKnowledge(docId) { await window.pulsar.removeKnowledgeDocument(docId); loadKnowledgeDocuments(); showToast('Document removed', 'success'); }
+
+    async function generateContent() {
+      const topicEl = document.getElementById('ai-topic');
+      console.log('[Generate] ai-topic element:', topicEl);
+      if (!topicEl) {
+        showToast('Error: Cannot find topic input', 'error');
+        console.error('[Generate] ai-topic element not found!');
+        return;
+      }
+      const topic = topicEl.value.trim();
+      if (!topic) { showToast('Please enter a topic', 'error'); return; }
+      const usePersona = document.getElementById('use-persona')?.checked ?? true;
+      const useKB = document.getElementById('use-kb')?.checked ?? false;
+      const outputEl = document.getElementById('ai-output');
+
+      console.log('[Generate] Starting generation for topic:', topic);
+      outputEl.textContent = 'Checking AI provider...';
+
+      // Check current AI provider status
+      const providerInfo = await window.pulsar.getAIProvider();
+      console.log('[Generate] Provider info:', providerInfo);
+      console.log('[Generate] webllmEngine exists:', !!window.webllmEngine);
+      console.log('[Generate] webllmEngine.isReady:', window.webllmEngine?.isReady?.());
+
+      // Check if WebLLM is active and ready
+      if (window.webllmEngine && window.webllmEngine.isReady()) {
+        outputEl.textContent = 'Generating with Local AI...';
+        try {
+          // Build prompt with persona context if enabled
+          let systemPrompt = 'You are a social media content creator. Write engaging, concise posts.';
+          let prompt = `Write a ${currentPlatform} post about: ${topic}`;
+
+          if (usePersona) {
+            const personaPrompt = await window.pulsar.getPersonaPrompt(currentPlatform);
+            if (personaPrompt) systemPrompt = personaPrompt;
+          }
+
+          if (useKB) {
+            const kbContext = await window.pulsar.getKnowledgeContext(topic);
+            if (kbContext?.context) {
+              prompt = `Context:\n${kbContext.context}\n\nWrite a ${currentPlatform} post about: ${topic}`;
+            }
+          }
+
+          const result = await window.webllmEngine.generate(prompt, { systemPrompt, maxTokens: 300 });
+          if (result.success && result.text) {
+            generatedContent = result.text;
+            outputEl.textContent = result.text;
+            showToast('Generated with Local AI!', 'success');
+          } else {
+            outputEl.textContent = 'Generation failed';
+          }
+        } catch (error) {
+          console.error('[WebLLM] Generate error:', error);
+          outputEl.textContent = 'Error: ' + error.message;
+        }
+        return;
+      }
+
+      // Check if any AI provider is configured
+      if (!providerInfo || !providerInfo.type || providerInfo.type === 'none') {
+        outputEl.textContent = '⚠️ No AI provider configured.\n\nGo to Settings → AI Provider to set up:\n• Local Model (WebLLM) - Free, runs on your device\n• Bring Your Own Key - Use your API keys\n• Pro Backend - For Pro subscribers';
+        showToast('Please configure AI provider in Settings', 'error');
+        return;
+      }
+
+      // Fallback to IPC-based generation (BYOK/CLIProxy)
+      outputEl.textContent = 'Generating with ' + providerInfo.type + '...';
+      try {
+        let result;
+        if (usePersona) { result = await window.pulsar.generateWithPersona(topic, currentPlatform, useKB); }
+        else { result = await window.pulsar.generateContent(topic, {}); }
+        if (result.success && result.content) { generatedContent = result.content; outputEl.textContent = result.content; showToast('Content generated!', 'success'); }
+        else { outputEl.textContent = 'Generation failed: ' + (result.error || 'Unknown error'); }
+      } catch (error) { outputEl.textContent = 'Error: ' + error.message; }
+    }
+
+    async function generateVariations() {
+      const content = document.getElementById('content').value.trim() || generatedContent;
+      if (!content) { showToast('Please enter content first or generate some', 'error'); return; }
+      const outputEl = document.getElementById('ai-output');
+      outputEl.textContent = 'Generating variations...';
+      try {
+        const result = await window.pulsar.generateVariations(content, 3);
+        if (result.success && result.content) { generatedContent = result.content; outputEl.textContent = result.content; showToast('Variations generated!', 'success'); }
+        else { outputEl.textContent = 'Generation failed'; }
+      } catch (error) { outputEl.textContent = 'Error: ' + error.message; }
+    }
+
+    function useGeneratedContent() {
+      if (generatedContent) {
+        document.getElementById('content').value = generatedContent; updateCharCount();
+        document.querySelector('[data-tab="compose"]').click();
+        showToast('Content applied!', 'success');
+      } else { showToast('No generated content to use', 'error'); }
+    }
+
+    async function checkConnection() {
+      const result = await window.pulsar.checkAIConnection();
+      if (result.success) { showToast('AI connection successful!', 'success'); }
+      else { showToast('Connection failed: ' + (result.error || 'Unknown error'), 'error'); }
+    }
+
+    function showToast(message, type = 'info') {
+      const container = document.getElementById('toast-container');
+      const toast = document.createElement('div');
+      toast.className = `toast ${type}`;
+      toast.textContent = message;
+      container.appendChild(toast);
+      setTimeout(() => toast.remove(), 3000);
+    }
+
+    function escapeHtml(text) { const div = document.createElement('div'); div.textContent = text; return div.innerHTML; }
+
+    function formatBytes(bytes) {
+      if (bytes < 1024) return bytes + ' B';
+      if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+      return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+    }
+
+    // ============================================
+    // Smart Engagement Functions
+    // ============================================
+
+    let engageFoundPosts = [];
+    let engageStats = { found: 0, replied: 0, today: 0 };
+
+    // Find posts to engage with based on interests
+    async function findPostsToEngage() {
+      const interestsInput = document.getElementById('engage-interests').value.trim();
+      if (!interestsInput) {
+        showToast('Please enter your interests first', 'error');
+        return;
+      }
+
+      const interests = interestsInput.split(',').map(i => i.trim()).filter(i => i);
+      const audience = document.getElementById('engage-audience').value;
+      const postsContainer = document.getElementById('engage-posts');
+
+      postsContainer.innerHTML = '<div class="empty-state">🔍 Searching for posts...</div>';
+      showToast('Searching Twitter for relevant posts...', 'info');
+
+      try {
+        // Search Twitter via BrowserView
+        const result = await window.pulsar.searchTwitterPosts(interests, audience);
+
+        if (result.success && result.posts && result.posts.length > 0) {
+          engageFoundPosts = result.posts;
+          engageStats.found = result.posts.length;
+          updateEngageStats();
+          renderEngagePosts(result.posts);
+          showToast(`Found ${result.posts.length} posts!`, 'success');
+        } else {
+          postsContainer.innerHTML = `<div class="empty-state">
+            <p>No posts found for your interests</p>
+            <p style="font-size: 10px; margin-top: 4px;">Try different keywords or broaden your search</p>
+          </div>`;
+          showToast('No matching posts found', 'warning');
+        }
+      } catch (error) {
+        console.error('[Engage] Search error:', error);
+        postsContainer.innerHTML = `<div class="empty-state">
+          <p>Error searching: ${error.message}</p>
+          <p style="font-size: 10px; margin-top: 4px;">Make sure you're logged into Twitter in the browser</p>
+        </div>`;
+        showToast('Search failed: ' + error.message, 'error');
+      }
+    }
+
+    // Render found posts
+    function renderEngagePosts(posts) {
+      const container = document.getElementById('engage-posts');
+
+      if (!posts || posts.length === 0) {
+        container.innerHTML = '<div class="empty-state">No posts to display</div>';
+        return;
+      }
+
+      container.innerHTML = posts.map((post, index) => `
+        <div class="engage-post" data-index="${index}" style="background: var(--bg); border-radius: 8px; padding: 10px; margin-bottom: 8px;">
+          <div style="display: flex; justify-content: space-between; margin-bottom: 6px;">
+            <span style="font-size: 11px; font-weight: 600; color: var(--primary);">@${escapeHtml(post.author)}</span>
+            <span style="font-size: 10px; color: var(--text-dim);">${post.engagement || ''}</span>
+          </div>
+          <p style="font-size: 12px; line-height: 1.4; margin-bottom: 8px;">${escapeHtml(post.text).slice(0, 200)}${post.text.length > 200 ? '...' : ''}</p>
+
+          <div class="engage-reply-section" id="reply-section-${index}" style="display: none; margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border);">
+            <textarea class="engage-reply-text" id="reply-text-${index}" rows="2" placeholder="AI suggested reply..." style="width: 100%; margin-bottom: 6px; font-size: 11px;"></textarea>
+            <div style="display: flex; gap: 4px;">
+              <button class="btn btn-small btn-secondary" onclick="regenerateReply(${index})">🔄</button>
+              <button class="btn btn-small btn-primary" style="flex: 1;" onclick="sendReply(${index})">Send Reply</button>
+            </div>
+          </div>
+
+          <div style="display: flex; gap: 4px; margin-top: 6px;">
+            <button class="btn btn-small btn-secondary" style="flex: 1;" onclick="generateReply(${index})">✨ Generate Reply</button>
+            <button class="btn btn-small btn-secondary" onclick="viewPost(${index})">👁️</button>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    // Generate AI reply for a post
+    async function generateReply(index) {
+      const post = engageFoundPosts[index];
+      if (!post) return;
+
+      const usePersona = document.getElementById('engage-use-persona').checked;
+      const useKB = document.getElementById('engage-use-kb').checked;
+      const replySection = document.getElementById(`reply-section-${index}`);
+      const replyText = document.getElementById(`reply-text-${index}`);
+
+      replySection.style.display = 'block';
+      replyText.value = 'Generating reply...';
+      replyText.disabled = true;
+
+      try {
+        // Build system prompt
+        let systemPrompt = 'You are a social media user replying to a post. Be authentic, engaging, and add value to the conversation. Keep it brief (under 200 characters).';
+
+        if (usePersona) {
+          const personaPrompt = await window.pulsar.getPersonaPrompt('twitter');
+          if (personaPrompt) {
+            systemPrompt = personaPrompt + '\n\nKeep replies brief, authentic, and valuable. Under 200 characters.';
+          }
+        }
+
+        let prompt = `Reply to this tweet:\n"${post.text}"\n\nAuthor: @${post.author}`;
+
+        if (useKB) {
+          const interests = document.getElementById('engage-interests').value.trim();
+          const kbContext = await window.pulsar.getKnowledgeContext(interests);
+          if (kbContext?.context) {
+            prompt = `Your expertise:\n${kbContext.context.slice(0, 500)}\n\n${prompt}`;
+          }
+        }
+
+        // Use WebLLM if available, otherwise IPC
+        let reply;
+        if (window.webllmEngine && window.webllmEngine.isReady()) {
+          const result = await window.webllmEngine.generate(prompt, { systemPrompt, maxTokens: 100 });
+          reply = result.success ? result.text : null;
+        } else {
+          const result = await window.pulsar.aiGenerateReply(post.text, null, 'twitter');
+          reply = result.success ? result.content : null;
+        }
+
+        if (reply) {
+          replyText.value = reply.trim();
+          showToast('Reply generated!', 'success');
+        } else {
+          replyText.value = '';
+          replyText.placeholder = 'Failed to generate. Try again or write manually...';
+        }
+      } catch (error) {
+        console.error('[Engage] Generate reply error:', error);
+        replyText.value = '';
+        replyText.placeholder = 'Error: ' + error.message;
+      }
+
+      replyText.disabled = false;
+    }
+
+    // Regenerate reply
+    async function regenerateReply(index) {
+      await generateReply(index);
+    }
+
+    // Send reply to Twitter
+    async function sendReply(index) {
+      const post = engageFoundPosts[index];
+      const replyText = document.getElementById(`reply-text-${index}`);
+      const reply = replyText.value.trim();
+
+      if (!reply) {
+        showToast('Please generate or write a reply first', 'error');
+        return;
+      }
+
+      if (!post.url) {
+        showToast('Cannot find post URL', 'error');
+        return;
+      }
+
+      showToast('Sending reply...', 'info');
+
+      try {
+        const result = await window.pulsar.sendTwitterReply(post.url, reply);
+
+        if (result.success) {
+          engageStats.replied++;
+          engageStats.today++;
+          updateEngageStats();
+          showToast('Reply sent!', 'success');
+
+          // Mark as replied in UI
+          const section = document.getElementById(`reply-section-${index}`);
+          section.innerHTML = '<p style="font-size: 11px; color: var(--success); text-align: center;">✓ Reply sent!</p>';
+        } else {
+          showToast('Failed: ' + (result.error || 'Unknown error'), 'error');
+        }
+      } catch (error) {
+        console.error('[Engage] Send reply error:', error);
+        showToast('Error: ' + error.message, 'error');
+      }
+    }
+
+    // View original post in BrowserView
+    async function viewPost(index) {
+      const post = engageFoundPosts[index];
+      if (post && post.url) {
+        await window.pulsar.navigate(post.url);
+        showToast('Opening post...', 'info');
+      }
+    }
+
+    // Update engagement stats display
+    function updateEngageStats() {
+      document.getElementById('engage-found').textContent = engageStats.found;
+      document.getElementById('engage-replied').textContent = engageStats.replied;
+      document.getElementById('engage-today').textContent = engageStats.today;
+    }
+
+    // ============================================
+    // Authentication Functions
+    // ============================================
+
+    async function updateAuthState() {
+      try {
+        const isAuth = await window.pulsar.isAuthenticated();
+        if (isAuth) {
+          currentUser = await window.pulsar.getUser();
+        }
+        updateAuthUI();
+      } catch (error) {
+        console.error('Auth state check failed:', error);
+      }
+    }
+
+    function updateAuthUI() {
+      const loginBtn = document.getElementById('login-btn');
+      const userBadge = document.getElementById('user-badge');
+      const userEmail = document.getElementById('user-email');
+      const userTier = document.getElementById('user-tier');
+      const logoutBtn = document.getElementById('logout-btn');
+
+      if (currentUser) {
+        loginBtn.style.display = 'none';
+        userBadge.style.display = 'flex';
+        userEmail.textContent = currentUser.email?.split('@')[0] || 'User';
+        userTier.textContent = currentTier.toUpperCase();
+        userTier.classList.toggle('pro', currentTier === 'pro');
+        logoutBtn.style.display = 'block';
+      } else {
+        loginBtn.style.display = 'block';
+        userBadge.style.display = 'none';
+        logoutBtn.style.display = 'none';
+      }
+    }
+
+    async function handleLogin() {
+      try {
+        // Check if Supabase is configured first
+        const isConfigured = await window.pulsar.isSupabaseConfigured();
+        if (!isConfigured) {
+          showToast('⚠️ Backend not configured. Using local mode (no login required).', 'warning');
+          return;
+        }
+
+        showToast('Opening login window...', 'info');
+        const result = await window.pulsar.login('google');
+        if (result.success) {
+          currentUser = result.user;
+          showToast('Logged in successfully!', 'success');
+          updateAuthUI();
+          updateQuotaDisplay();
+          loadTrackedAccounts();
+        } else {
+          if (result.error.includes('cancelled')) {
+            showToast('Login cancelled', 'info');
+          } else {
+            showToast('Login failed: ' + result.error, 'error');
+          }
+        }
+      } catch (error) {
+        showToast('Login error: ' + error.message, 'error');
+      }
+    }
+
+    async function handleLogout() {
+      if (confirm('Are you sure you want to logout?')) {
+        await window.pulsar.logout();
+        currentUser = null;
+        currentTier = 'free';
+        updateAuthUI();
+        updateQuotaDisplay();
+        showToast('Logged out', 'success');
+      }
+    }
+
+    function showAccountMenu() {
+      // For now, just go to settings
+      document.querySelector('[data-tab="settings"]').click();
+    }
+
+    // ============================================
+    // Quota Functions
+    // ============================================
+
+    async function updateQuotaDisplay() {
+      try {
+        const status = await window.pulsar.getQuotaStatus();
+        currentTier = status.tier || 'free';
+
+        const quotaCount = document.getElementById('quota-count');
+        const upgradeBtn = document.getElementById('upgrade-btn');
+        const remaining = status.quota.posts.remaining;
+        const limit = status.quota.posts.limit;
+
+        quotaCount.textContent = `${remaining}/${limit}`;
+        quotaCount.classList.remove('low', 'empty');
+        if (remaining === 0) quotaCount.classList.add('empty');
+        else if (remaining <= 1) quotaCount.classList.add('low');
+
+        // Show upgrade button for free users
+        upgradeBtn.style.display = currentTier === 'free' ? 'block' : 'none';
+
+        // Update subscription display
+        const tierDisplay = document.getElementById('sub-tier-display');
+        const subDetail = document.getElementById('sub-detail');
+        const subActionBtn = document.getElementById('sub-action-btn');
+
+        if (currentTier === 'pro') {
+          tierDisplay.textContent = 'Pro Plan';
+          subDetail.textContent = '30 posts/day • AI • Scheduling';
+          subActionBtn.textContent = 'Manage';
+        } else {
+          tierDisplay.textContent = 'Free Plan';
+          subDetail.textContent = '3 posts/day';
+          subActionBtn.textContent = 'Upgrade';
+        }
+
+        // Update auth UI with current tier
+        updateAuthUI();
+
+      } catch (error) {
+        console.error('Quota update failed:', error);
+      }
+    }
+
+    async function handleUpgrade() {
+      if (!currentUser) {
+        showToast('Please login first', 'error');
+        handleLogin();
+        return;
+      }
+      try {
+        showToast('Opening checkout...', 'info');
+        const result = await window.pulsar.createCheckoutSession();
+        if (!result.success) {
+          showToast('Checkout failed: ' + result.error, 'error');
+        }
+      } catch (error) {
+        showToast('Error: ' + error.message, 'error');
+      }
+    }
+
+    async function handleSubscriptionAction() {
+      if (currentTier === 'pro') {
+        // Open billing portal
+        try {
+          const result = await window.pulsar.createPortalSession();
+          if (!result.success) {
+            showToast('Portal failed: ' + result.error, 'error');
+          }
+        } catch (error) {
+          showToast('Error: ' + error.message, 'error');
+        }
+      } else {
+        handleUpgrade();
+      }
+    }
+
+    // ============================================
+    // Tracked Accounts Functions
+    // ============================================
+
+    async function loadTrackedAccounts() {
+      try {
+        const data = await window.pulsar.getTrackedAccounts();
+        trackedAccountsData = data;
+
+        // Update stats
+        document.getElementById('tracked-total').textContent = data.all?.length || 0;
+        document.getElementById('tracked-defaults').textContent = data.defaults?.length || 0;
+        document.getElementById('tracked-custom').textContent = data.custom?.length || 0;
+
+        renderTrackedAccountsList(data.all || []);
+
+        // Show upgrade CTA for free users
+        const upgradeCta = document.getElementById('tracked-upgrade-cta');
+        const addBtn = document.getElementById('add-tracked-btn');
+        if (currentTier !== 'pro') {
+          upgradeCta.style.display = 'block';
+          addBtn.style.display = 'none';
+        } else {
+          upgradeCta.style.display = 'none';
+          addBtn.style.display = 'block';
+        }
+      } catch (error) {
+        console.error('Failed to load tracked accounts:', error);
+        document.getElementById('tracked-list').innerHTML =
+          '<div class="empty-state">Failed to load accounts</div>';
+      }
+    }
+
+    function renderTrackedAccountsList(accounts) {
+      const container = document.getElementById('tracked-list');
+      if (!accounts || accounts.length === 0) {
+        container.innerHTML = '<div class="empty-state">No tracked accounts</div>';
+        return;
+      }
+
+      const tierColors = {
+        1: '#ef4444', // red - titans
+        2: '#f59e0b', // amber - AI leaders
+        3: '#22c55e', // green - VCs
+        4: '#3b82f6', // blue - founders
+        5: '#8b5cf6', // purple - devtools
+        6: '#6b7280'  // gray - influencers
+      };
+
+      container.innerHTML = accounts.slice(0, 30).map(account => `
+        <div class="job-item" style="display: flex; align-items: center; gap: 10px;">
+          <div style="width: 8px; height: 8px; border-radius: 50%; background: ${tierColors[account.tier] || '#6b7280'};" title="Tier ${account.tier}"></div>
+          <div style="flex: 1;">
+            <div style="font-size: 12px; font-weight: 500;">@${escapeHtml(account.username)}</div>
+            <div style="font-size: 10px; color: var(--text-dim);">${escapeHtml(account.display_name || '')} • ${account.category || 'unknown'}</div>
+          </div>
+          ${!account.is_default ? `<button class="btn btn-small btn-secondary" onclick="removeTrackedAccount('${account.id}')">×</button>` : ''}
+        </div>
+      `).join('');
+
+      if (accounts.length > 30) {
+        container.innerHTML += `<div class="empty-state">+ ${accounts.length - 30} more accounts</div>`;
+      }
+    }
+
+    async function searchTrackedAccounts() {
+      const query = document.getElementById('tracked-search').value.trim();
+      if (!query && trackedAccountsData) {
+        renderTrackedAccountsList(trackedAccountsData.all);
+        return;
+      }
+      try {
+        const results = await window.pulsar.searchTrackedAccounts(query);
+        renderTrackedAccountsList(results);
+      } catch (error) {
+        console.error('Search failed:', error);
+      }
+    }
+
+    async function addTrackedAccount() {
+      if (currentTier !== 'pro') {
+        handleUpgrade();
+        return;
+      }
+      const username = prompt('Enter Twitter username (without @):');
+      if (!username) return;
+
+      try {
+        const result = await window.pulsar.addTrackedAccount({
+          platform: 'twitter',
+          username: username.trim().replace('@', ''),
+          tier: 4 // default tier
+        });
+        if (result.success) {
+          showToast('Account added!', 'success');
+          loadTrackedAccounts();
+        } else {
+          showToast('Failed: ' + result.error, 'error');
+        }
+      } catch (error) {
+        showToast('Error: ' + error.message, 'error');
+      }
+    }
+
+    async function removeTrackedAccount(accountId) {
+      if (confirm('Remove this account from tracking?')) {
+        try {
+          const result = await window.pulsar.removeTrackedAccount(accountId);
+          if (result.success) {
+            showToast('Account removed', 'success');
+            loadTrackedAccounts();
+          } else {
+            showToast('Failed: ' + result.error, 'error');
+          }
+        } catch (error) {
+          showToast('Error: ' + error.message, 'error');
+        }
+      }
+    }
+
+    // ============================================
+    // AI Provider Functions
+    // ============================================
+
+    const BYOK_SERVICES = {
+      openai: {
+        name: 'OpenAI',
+        keyUrl: 'https://platform.openai.com/api-keys',
+        models: [
+          { id: 'gpt-4o-mini', name: 'GPT-4o Mini (Recommended)' },
+          { id: 'gpt-4o', name: 'GPT-4o' },
+          { id: 'gpt-3.5-turbo', name: 'GPT-3.5 Turbo' }
+        ]
+      },
+      anthropic: {
+        name: 'Anthropic',
+        keyUrl: 'https://console.anthropic.com/settings/keys',
+        models: [
+          { id: 'claude-3-haiku-20240307', name: 'Claude 3 Haiku (Recommended)' },
+          { id: 'claude-3-5-sonnet-20241022', name: 'Claude 3.5 Sonnet' }
+        ]
+      },
+      gemini: {
+        name: 'Google Gemini',
+        keyUrl: 'https://aistudio.google.com/app/apikey',
+        models: [
+          { id: 'gemini-1.5-flash', name: 'Gemini 1.5 Flash (Recommended)' },
+          { id: 'gemini-1.5-pro', name: 'Gemini 1.5 Pro' }
+        ]
+      },
+      openrouter: {
+        name: 'OpenRouter',
+        keyUrl: 'https://openrouter.ai/keys',
+        models: [
+          { id: 'meta-llama/llama-3.1-8b-instruct:free', name: 'Llama 3.1 8B (Free)' },
+          { id: 'google/gemma-2-9b-it:free', name: 'Gemma 2 9B (Free)' },
+          { id: 'mistralai/mistral-7b-instruct:free', name: 'Mistral 7B (Free)' }
+        ]
+      }
+    };
+
+    async function initAIProviderUI() {
+      try {
+        const provider = await window.pulsar.getAIProvider();
+        const select = document.getElementById('ai-provider-select');
+
+        if (provider.type && provider.type !== 'none') {
+          select.value = provider.type;
+          handleProviderChange();
+
+          // Auto-reinitialize WebLLM if it was previously active
+          if (provider.type === 'webllm' && provider.config?.model) {
+            console.log('[Pulsar] Auto-loading WebLLM from previous session...');
+            showToast('Loading Local AI...', 'info');
+
+            // Wait for webllmEngine module to load
+            let attempts = 0;
+            while (!window.webllmEngine && attempts < 30) {
+              await new Promise(r => setTimeout(r, 100));
+              attempts++;
+            }
+
+            if (window.webllmEngine) {
+              try {
+                const btn = document.getElementById('webllm-action-btn');
+                const progressDiv = document.getElementById('webllm-download-progress');
+                const progressBar = document.getElementById('webllm-progress-bar');
+                const progressText = document.getElementById('webllm-progress-text');
+
+                if (btn) btn.disabled = true;
+                if (btn) btn.textContent = 'Loading...';
+                if (progressDiv) progressDiv.style.display = 'block';
+
+                await window.webllmEngine.init(provider.config.model, (progress) => {
+                  const pct = Math.round(progress.progress * 100);
+                  if (progressBar) progressBar.style.width = pct + '%';
+                  if (progressText) progressText.textContent = progress.text || `Loading: ${pct}%`;
+                });
+
+                if (progressDiv) progressDiv.style.display = 'none';
+                if (btn) btn.textContent = 'Active ✓';
+                updateProviderStatus('webllm', true, provider.config);
+                showToast('Local AI ready!', 'success');
+              } catch (e) {
+                console.error('[Pulsar] Failed to auto-load WebLLM:', e);
+                showToast('Failed to load Local AI: ' + e.message, 'error');
+              }
+            }
+          } else if (provider.ready) {
+            updateProviderStatus(provider.type, true, provider.config);
+          }
+        }
+      } catch (error) {
+        console.error('Failed to init AI provider UI:', error);
+      }
+    }
+
+    function handleProviderChange() {
+      const provider = document.getElementById('ai-provider-select').value;
+
+      // Hide all config sections
+      document.getElementById('webllm-config').style.display = 'none';
+      document.getElementById('byok-config').style.display = 'none';
+      document.getElementById('cliproxy-config').style.display = 'none';
+
+      // Show selected config
+      if (provider === 'webllm') {
+        document.getElementById('webllm-config').style.display = 'block';
+      } else if (provider === 'byok') {
+        document.getElementById('byok-config').style.display = 'block';
+        updateBYOKModels();
+      } else if (provider === 'cliproxy') {
+        document.getElementById('cliproxy-config').style.display = 'block';
+        // Check if Pro user
+        if (currentTier !== 'pro') {
+          document.getElementById('cliproxy-pro-notice').innerHTML =
+            '<p style="font-size: 11px; color: #f59e0b;">Upgrade to Pro to use backend AI</p>' +
+            '<button class="btn btn-small btn-primary" style="margin-top: 8px;" onclick="handleSubscriptionAction()">Upgrade</button>';
+        }
+      }
+    }
+
+    function updateProviderStatus(provider, ready, config) {
+      const statusEl = document.getElementById('ai-provider-status');
+      if (ready) {
+        let modelName = config?.model || 'Unknown';
+        statusEl.innerHTML = `
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span style="color: #22c55e;">●</span>
+            <span style="font-size: 11px;">Active: ${provider.toUpperCase()} - ${modelName}</span>
+          </div>
+        `;
+      } else {
+        statusEl.innerHTML = `<p style="font-size: 11px; color: var(--text-dim);">No AI provider configured</p>`;
+      }
+    }
+
+    // WebLLM Functions
+    async function handleWebLLMAction() {
+      const modelId = document.getElementById('webllm-model-select').value;
+      const btn = document.getElementById('webllm-action-btn');
+      const progressDiv = document.getElementById('webllm-download-progress');
+      const progressBar = document.getElementById('webllm-progress-bar');
+      const progressText = document.getElementById('webllm-progress-text');
+
+      // Check if WebGPU is available
+      if (!navigator.gpu) {
+        showToast('WebGPU not available. Your browser/GPU may not support it.', 'error');
+        return;
+      }
+
+      btn.disabled = true;
+      btn.textContent = 'Loading...';
+      progressDiv.style.display = 'block';
+      progressBar.style.width = '0%';
+      progressText.textContent = 'Loading WebLLM library...';
+
+      try {
+        // Wait for webllmEngine to be available (module loads async)
+        let attempts = 0;
+        while (!window.webllmEngine && attempts < 50) {
+          await new Promise(r => setTimeout(r, 100));
+          attempts++;
+        }
+
+        if (!window.webllmEngine) {
+          throw new Error('WebLLM engine failed to load');
+        }
+
+        // Initialize with progress callback
+        const result = await window.webllmEngine.init(modelId, (progress) => {
+          const pct = Math.round(progress.progress * 100);
+          progressBar.style.width = pct + '%';
+          progressText.textContent = progress.text || `Downloading: ${pct}%`;
+        });
+
+        if (result.success) {
+          // Update provider in main process
+          await window.pulsar.setAIProviderConfig('webllm', { model: modelId });
+          await window.pulsar.setAIProvider('webllm', currentTier);
+
+          showToast('WebLLM activated! Model: ' + modelId.split('-')[0], 'success');
+          updateProviderStatus('webllm', true, { model: modelId });
+          btn.textContent = 'Active ✓';
+          progressDiv.style.display = 'none';
+        }
+      } catch (error) {
+        console.error('[WebLLM] Action error:', error);
+        showToast('WebLLM Error: ' + error.message, 'error');
+        btn.disabled = false;
+        btn.textContent = 'Download & Activate';
+        progressDiv.style.display = 'none';
+      }
+    }
+
+    // BYOK Functions
+    function updateBYOKModels() {
+      const service = document.getElementById('byok-service-select').value;
+      const modelSelect = document.getElementById('byok-model-select');
+      const serviceInfo = BYOK_SERVICES[service];
+
+      modelSelect.innerHTML = '';
+      serviceInfo.models.forEach(m => {
+        const opt = document.createElement('option');
+        opt.value = m.id;
+        opt.textContent = m.name;
+        modelSelect.appendChild(opt);
+      });
+    }
+
+    function openBYOKKeyPage() {
+      const service = document.getElementById('byok-service-select').value;
+      const url = BYOK_SERVICES[service].keyUrl;
+      window.pulsar.navigate(url);
+    }
+
+    async function testAndActivateBYOK() {
+      const service = document.getElementById('byok-service-select').value;
+      const apiKey = document.getElementById('byok-api-key').value.trim();
+      const model = document.getElementById('byok-model-select').value;
+
+      if (!apiKey) {
+        showToast('Please enter your API key', 'error');
+        return;
+      }
+
+      showToast('Testing connection...', 'info');
+
+      try {
+        // Save config
+        await window.pulsar.setAIProviderConfig('byok', {
+          service,
+          apiKey,
+          model
+        });
+
+        // Activate provider
+        const result = await window.pulsar.setAIProvider('byok', currentTier);
+
+        if (result.success) {
+          showToast('BYOK activated successfully!', 'success');
+          updateProviderStatus('byok', true, { model });
+        } else {
+          showToast('Failed: ' + result.error, 'error');
+        }
+      } catch (error) {
+        showToast('Error: ' + error.message, 'error');
+      }
+    }
+
+    // CLIProxy Functions
+    async function activateCLIProxy() {
+      if (currentTier !== 'pro') {
+        showToast('Pro subscription required', 'error');
+        return;
+      }
+
+      const model = document.getElementById('cliproxy-model-select').value;
+
+      try {
+        await window.pulsar.setAIProviderConfig('cliproxy', { model });
+        const result = await window.pulsar.setAIProvider('cliproxy', currentTier);
+
+        if (result.success) {
+          showToast('Pro AI activated!', 'success');
+          updateProviderStatus('cliproxy', true, { model });
+        } else {
+          showToast('Failed: ' + result.error, 'error');
+        }
+      } catch (error) {
+        showToast('Error: ' + error.message, 'error');
+      }
+    }
+
+    // Initialize AI Provider UI on load
+    document.addEventListener('DOMContentLoaded', () => {
+      setTimeout(initAIProviderUI, 500);
+    });
+  </script>
+</body>
+</html>
