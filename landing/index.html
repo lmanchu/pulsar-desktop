@@ -1,0 +1,699 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Pulsar Desktop – AI Social Media Automation for Your Mac</title>
+  <meta name="description" content="Free, private, local AI-powered social media automation. Generate content, smart replies, and grow your brand – all running on your device.">
+
+  <!-- Open Graph -->
+  <meta property="og:title" content="Pulsar Desktop – AI Social Media Automation">
+  <meta property="og:description" content="Free local AI for Twitter, LinkedIn, Threads. Your data stays on your device.">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://pulsar-desktop.irisgo.xyz">
+
+  <!-- Favicon -->
+  <link rel="icon" type="image/png" href="../assets/icon.png">
+
+  <style>
+    :root {
+      --bg-dark: #0a0a0f;
+      --bg-card: #12121a;
+      --border: #1f1f2e;
+      --text: #e4e4e7;
+      --text-dim: #71717a;
+      --primary: #8b5cf6;
+      --primary-light: #a78bfa;
+      --accent: #c084fc;
+      --success: #22c55e;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: var(--bg-dark);
+      color: var(--text);
+      line-height: 1.6;
+    }
+
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 0 24px;
+    }
+
+    /* Header */
+    header {
+      padding: 20px 0;
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      background: rgba(10, 10, 15, 0.8);
+      backdrop-filter: blur(10px);
+      z-index: 100;
+      border-bottom: 1px solid var(--border);
+    }
+
+    header .container {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .logo {
+      font-size: 24px;
+      font-weight: 700;
+      background: linear-gradient(135deg, var(--primary), var(--accent));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .nav-links {
+      display: flex;
+      gap: 32px;
+      align-items: center;
+    }
+
+    .nav-links a {
+      color: var(--text-dim);
+      text-decoration: none;
+      font-size: 14px;
+      transition: color 0.2s;
+    }
+
+    .nav-links a:hover { color: var(--text); }
+
+    .btn {
+      padding: 10px 20px;
+      border-radius: 8px;
+      font-weight: 600;
+      font-size: 14px;
+      text-decoration: none;
+      transition: all 0.2s;
+      cursor: pointer;
+      border: none;
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, var(--primary), var(--accent));
+      color: white;
+    }
+
+    .btn-primary:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 10px 40px rgba(139, 92, 246, 0.3);
+    }
+
+    .btn-secondary {
+      background: var(--bg-card);
+      color: var(--text);
+      border: 1px solid var(--border);
+    }
+
+    .btn-secondary:hover {
+      border-color: var(--primary);
+    }
+
+    /* Hero */
+    .hero {
+      padding: 160px 0 100px;
+      text-align: center;
+      background: radial-gradient(ellipse at top, rgba(139, 92, 246, 0.15) 0%, transparent 50%);
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 16px;
+      background: rgba(139, 92, 246, 0.1);
+      border: 1px solid rgba(139, 92, 246, 0.3);
+      border-radius: 100px;
+      font-size: 13px;
+      color: var(--primary-light);
+      margin-bottom: 24px;
+    }
+
+    .hero h1 {
+      font-size: 64px;
+      font-weight: 800;
+      line-height: 1.1;
+      margin-bottom: 24px;
+      background: linear-gradient(135deg, #fff 30%, var(--accent));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .hero p {
+      font-size: 20px;
+      color: var(--text-dim);
+      max-width: 600px;
+      margin: 0 auto 40px;
+    }
+
+    .hero-cta {
+      display: flex;
+      gap: 16px;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+
+    .hero-cta .btn {
+      padding: 14px 28px;
+      font-size: 16px;
+    }
+
+    .hero-stats {
+      display: flex;
+      justify-content: center;
+      gap: 48px;
+      margin-top: 60px;
+      padding-top: 40px;
+      border-top: 1px solid var(--border);
+    }
+
+    .stat {
+      text-align: center;
+    }
+
+    .stat-value {
+      font-size: 36px;
+      font-weight: 700;
+      color: var(--primary-light);
+    }
+
+    .stat-label {
+      font-size: 14px;
+      color: var(--text-dim);
+    }
+
+    /* Features */
+    .features {
+      padding: 100px 0;
+    }
+
+    .section-title {
+      text-align: center;
+      margin-bottom: 60px;
+    }
+
+    .section-title h2 {
+      font-size: 42px;
+      font-weight: 700;
+      margin-bottom: 16px;
+    }
+
+    .section-title p {
+      color: var(--text-dim);
+      font-size: 18px;
+    }
+
+    .features-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 24px;
+    }
+
+    .feature-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 32px;
+      transition: all 0.3s;
+    }
+
+    .feature-card:hover {
+      border-color: var(--primary);
+      transform: translateY(-4px);
+    }
+
+    .feature-icon {
+      width: 48px;
+      height: 48px;
+      background: linear-gradient(135deg, var(--primary), var(--accent));
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 24px;
+      margin-bottom: 20px;
+    }
+
+    .feature-card h3 {
+      font-size: 20px;
+      margin-bottom: 12px;
+    }
+
+    .feature-card p {
+      color: var(--text-dim);
+      font-size: 15px;
+    }
+
+    /* Why Local */
+    .why-local {
+      padding: 100px 0;
+      background: linear-gradient(180deg, transparent, rgba(139, 92, 246, 0.05), transparent);
+    }
+
+    .comparison {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 32px;
+      margin-top: 48px;
+    }
+
+    .comparison-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 32px;
+    }
+
+    .comparison-card.highlight {
+      border-color: var(--primary);
+      background: linear-gradient(135deg, rgba(139, 92, 246, 0.1), rgba(192, 132, 252, 0.05));
+    }
+
+    .comparison-card h3 {
+      font-size: 24px;
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .comparison-card .subtitle {
+      color: var(--text-dim);
+      margin-bottom: 24px;
+    }
+
+    .comparison-list {
+      list-style: none;
+    }
+
+    .comparison-list li {
+      padding: 12px 0;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-size: 15px;
+    }
+
+    .comparison-list li:last-child {
+      border-bottom: none;
+    }
+
+    .check { color: var(--success); }
+    .cross { color: #ef4444; }
+
+    /* Pricing */
+    .pricing {
+      padding: 100px 0;
+    }
+
+    .pricing-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 32px;
+      max-width: 800px;
+      margin: 0 auto;
+    }
+
+    .pricing-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 40px;
+      text-align: center;
+    }
+
+    .pricing-card.featured {
+      border-color: var(--primary);
+      position: relative;
+    }
+
+    .pricing-card.featured::before {
+      content: 'RECOMMENDED';
+      position: absolute;
+      top: -12px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: linear-gradient(135deg, var(--primary), var(--accent));
+      padding: 4px 16px;
+      border-radius: 100px;
+      font-size: 11px;
+      font-weight: 700;
+    }
+
+    .pricing-card h3 {
+      font-size: 24px;
+      margin-bottom: 8px;
+    }
+
+    .pricing-card .price {
+      font-size: 48px;
+      font-weight: 800;
+      margin: 16px 0;
+    }
+
+    .pricing-card .price span {
+      font-size: 18px;
+      font-weight: 400;
+      color: var(--text-dim);
+    }
+
+    .pricing-card .price.free {
+      background: linear-gradient(135deg, var(--success), #4ade80);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .pricing-features {
+      list-style: none;
+      margin: 32px 0;
+      text-align: left;
+    }
+
+    .pricing-features li {
+      padding: 10px 0;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-size: 15px;
+      color: var(--text-dim);
+    }
+
+    .pricing-card .btn {
+      width: 100%;
+      padding: 14px;
+    }
+
+    /* Download */
+    .download {
+      padding: 100px 0;
+      text-align: center;
+      background: radial-gradient(ellipse at bottom, rgba(139, 92, 246, 0.15) 0%, transparent 50%);
+    }
+
+    .download h2 {
+      font-size: 48px;
+      font-weight: 800;
+      margin-bottom: 16px;
+    }
+
+    .download p {
+      color: var(--text-dim);
+      font-size: 18px;
+      margin-bottom: 40px;
+    }
+
+    .download-buttons {
+      display: flex;
+      gap: 16px;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+
+    .download-btn {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 16px 32px;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      text-decoration: none;
+      color: var(--text);
+      transition: all 0.2s;
+    }
+
+    .download-btn:hover {
+      border-color: var(--primary);
+      transform: translateY(-2px);
+    }
+
+    .download-btn .icon {
+      font-size: 32px;
+    }
+
+    .download-btn .info {
+      text-align: left;
+    }
+
+    .download-btn .label {
+      font-size: 12px;
+      color: var(--text-dim);
+    }
+
+    .download-btn .platform {
+      font-size: 18px;
+      font-weight: 600;
+    }
+
+    /* Footer */
+    footer {
+      padding: 40px 0;
+      border-top: 1px solid var(--border);
+      text-align: center;
+    }
+
+    footer p {
+      color: var(--text-dim);
+      font-size: 14px;
+    }
+
+    footer a {
+      color: var(--primary-light);
+      text-decoration: none;
+    }
+
+    /* Responsive */
+    @media (max-width: 768px) {
+      .hero h1 { font-size: 40px; }
+      .features-grid { grid-template-columns: 1fr; }
+      .comparison { grid-template-columns: 1fr; }
+      .pricing-grid { grid-template-columns: 1fr; }
+      .hero-stats { flex-direction: column; gap: 24px; }
+      .nav-links { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <!-- Header -->
+  <header>
+    <div class="container">
+      <div class="logo">✦ Pulsar Desktop</div>
+      <nav class="nav-links">
+        <a href="#features">Features</a>
+        <a href="#pricing">Pricing</a>
+        <a href="https://github.com/lmanchu/pulsar-desktop">GitHub</a>
+        <a href="#download" class="btn btn-primary">Download Free</a>
+      </nav>
+    </div>
+  </header>
+
+  <!-- Hero -->
+  <section class="hero">
+    <div class="container">
+      <div class="badge">
+        <span>🔒</span>
+        <span>100% Private · Runs Locally · No Cloud Required</span>
+      </div>
+
+      <h1>Your social media<br>on autopilot</h1>
+
+      <p>AI-powered automation for Twitter, LinkedIn, and Threads. Generate content, reply smartly, and grow your brand – all running privately on your Mac.</p>
+
+      <div class="hero-cta">
+        <a href="#download" class="btn btn-primary">Download for Mac</a>
+        <a href="https://github.com/lmanchu/pulsar-desktop" class="btn btn-secondary">View on GitHub</a>
+      </div>
+
+      <div class="hero-stats">
+        <div class="stat">
+          <div class="stat-value">100%</div>
+          <div class="stat-label">Local & Private</div>
+        </div>
+        <div class="stat">
+          <div class="stat-value">$0</div>
+          <div class="stat-label">Free to Use</div>
+        </div>
+        <div class="stat">
+          <div class="stat-value">3</div>
+          <div class="stat-label">Platforms Supported</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Features -->
+  <section class="features" id="features">
+    <div class="container">
+      <div class="section-title">
+        <h2>Everything you need to grow</h2>
+        <p>Powerful AI features that run entirely on your device</p>
+      </div>
+
+      <div class="features-grid">
+        <div class="feature-card">
+          <div class="feature-icon">🤖</div>
+          <h3>Local AI Generation</h3>
+          <p>Generate posts using WebLLM – a local AI that runs on your GPU. No API keys needed, no data leaves your device.</p>
+        </div>
+
+        <div class="feature-card">
+          <div class="feature-icon">💬</div>
+          <h3>Smart Engagement</h3>
+          <p>AI finds relevant posts and suggests replies based on your persona and expertise. Grow your network authentically.</p>
+        </div>
+
+        <div class="feature-card">
+          <div class="feature-icon">📅</div>
+          <h3>Post Scheduling</h3>
+          <p>Queue posts for optimal times. Set it and forget it – Pulsar handles the posting while you focus on creating.</p>
+        </div>
+
+        <div class="feature-card">
+          <div class="feature-icon">🎭</div>
+          <h3>Persona System</h3>
+          <p>Build your AI writing persona with MBTI-style questions. Posts match your voice, not generic AI outputs.</p>
+        </div>
+
+        <div class="feature-card">
+          <div class="feature-icon">📚</div>
+          <h3>Knowledge Base</h3>
+          <p>Add your docs, notes, and expertise. AI references your knowledge to create authoritative, on-brand content.</p>
+        </div>
+
+        <div class="feature-card">
+          <div class="feature-icon">👥</div>
+          <h3>KOL Tracking</h3>
+          <p>Monitor key accounts in your industry. Get notified when they post, and engage at the right moment.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Why Local -->
+  <section class="why-local">
+    <div class="container">
+      <div class="section-title">
+        <h2>Why run AI locally?</h2>
+        <p>Your data is valuable. Keep it on your device.</p>
+      </div>
+
+      <div class="comparison">
+        <div class="comparison-card">
+          <h3>☁️ Cloud AI Tools</h3>
+          <p class="subtitle">Most automation tools</p>
+          <ul class="comparison-list">
+            <li><span class="cross">✕</span> Your content sent to third-party servers</li>
+            <li><span class="cross">✕</span> Monthly subscription fees ($29-199/mo)</li>
+            <li><span class="cross">✕</span> API rate limits and quotas</li>
+            <li><span class="cross">✕</span> Requires internet connection</li>
+            <li><span class="cross">✕</span> Data may be used for training</li>
+          </ul>
+        </div>
+
+        <div class="comparison-card highlight">
+          <h3>💻 Pulsar Desktop</h3>
+          <p class="subtitle">Local-first approach</p>
+          <ul class="comparison-list">
+            <li><span class="check">✓</span> Everything runs on your Mac</li>
+            <li><span class="check">✓</span> Free forever (or bring your own API key)</li>
+            <li><span class="check">✓</span> No rate limits – use as much as you want</li>
+            <li><span class="check">✓</span> Works offline (after model download)</li>
+            <li><span class="check">✓</span> Your data never leaves your device</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Pricing -->
+  <section class="pricing" id="pricing">
+    <div class="container">
+      <div class="section-title">
+        <h2>Simple, honest pricing</h2>
+        <p>Start free, upgrade when you need more power</p>
+      </div>
+
+      <div class="pricing-grid">
+        <div class="pricing-card">
+          <h3>Free</h3>
+          <div class="price free">$0</div>
+          <p style="color: var(--text-dim);">Perfect for getting started</p>
+
+          <ul class="pricing-features">
+            <li><span class="check">✓</span> Local AI (WebLLM)</li>
+            <li><span class="check">✓</span> 3 posts per day</li>
+            <li><span class="check">✓</span> Persona system</li>
+            <li><span class="check">✓</span> Basic scheduling</li>
+            <li><span class="check">✓</span> 1 social account</li>
+          </ul>
+
+          <a href="#download" class="btn btn-secondary">Download Free</a>
+        </div>
+
+        <div class="pricing-card featured">
+          <h3>Pro</h3>
+          <div class="price">$9.99<span>/mo</span></div>
+          <p style="color: var(--text-dim);">For serious creators</p>
+
+          <ul class="pricing-features">
+            <li><span class="check">✓</span> Everything in Free</li>
+            <li><span class="check">✓</span> 30 posts per day</li>
+            <li><span class="check">✓</span> 50 AI generations/day</li>
+            <li><span class="check">✓</span> Smart Engagement</li>
+            <li><span class="check">✓</span> 100 tracked accounts</li>
+            <li><span class="check">✓</span> Knowledge Base</li>
+            <li><span class="check">✓</span> 10 social accounts</li>
+          </ul>
+
+          <a href="#" class="btn btn-primary">Upgrade to Pro</a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Download -->
+  <section class="download" id="download">
+    <div class="container">
+      <h2>Ready to automate?</h2>
+      <p>Download Pulsar Desktop and start growing your social presence today.</p>
+
+      <div class="download-buttons">
+        <a href="https://github.com/lmanchu/pulsar-desktop/releases" class="download-btn">
+          <span class="icon">🍎</span>
+          <div class="info">
+            <div class="label">Download for</div>
+            <div class="platform">macOS (Apple Silicon)</div>
+          </div>
+        </a>
+
+        <a href="https://github.com/lmanchu/pulsar-desktop/releases" class="download-btn">
+          <span class="icon">🍎</span>
+          <div class="info">
+            <div class="label">Download for</div>
+            <div class="platform">macOS (Intel)</div>
+          </div>
+        </a>
+      </div>
+
+      <p style="margin-top: 24px; font-size: 14px;">
+        Windows & Linux coming soon · <a href="https://github.com/lmanchu/pulsar-desktop">View source on GitHub</a>
+      </p>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer>
+    <div class="container">
+      <p>Built with ♥ by <a href="https://irisgo.xyz">IrisGo</a> · <a href="https://github.com/lmanchu/pulsar-desktop">Open Source</a></p>
+    </div>
+  </footer>
+</body>
+</html>
