@@ -8,6 +8,7 @@
     :root {
       --bg: #0f0f0f;
       --panel: #1a1a1a;
+      --card: #1f1f1f;
       --border: #2a2a2a;
       --text: #e0e0e0;
       --text-dim: #888;
@@ -340,6 +341,11 @@
       to { opacity: 1; transform: translateY(0); }
     }
 
+    @keyframes pulse {
+      0%, 100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); }
+      50% { transform: scale(1.05); box-shadow: 0 0 8px 2px rgba(239, 68, 68, 0.6); }
+    }
+
     .empty-state { text-align: center; padding: 24px; color: var(--text-dim); font-size: 12px; }
 
     .section-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
@@ -354,6 +360,88 @@
     ::-webkit-scrollbar-track { background: var(--bg); }
     ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
     ::-webkit-scrollbar-thumb:hover { background: #444; }
+
+    /* Payment Modal */
+    .modal-overlay {
+      display: none;
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0,0,0,0.85);
+      z-index: 9999;
+      align-items: center;
+      justify-content: center;
+    }
+    .modal-overlay.show { display: flex; }
+    .modal-content {
+      background: #1f1f1f;
+      border-radius: 12px;
+      padding: 24px;
+      max-width: 420px;
+      width: 90%;
+      max-height: 80vh;
+      overflow-y: auto;
+      border: 1px solid #2a2a2a;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+      position: relative;
+      z-index: 10000;
+    }
+    .modal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 16px;
+    }
+    .modal-title { font-size: 16px; font-weight: 600; }
+    .modal-close {
+      background: none; border: none;
+      color: var(--text-dim); font-size: 20px;
+      cursor: pointer; padding: 4px 8px;
+    }
+    .modal-close:hover { color: var(--text); }
+    .payment-option {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 12px;
+      margin-bottom: 12px;
+    }
+    .payment-option-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+    .payment-option-title { font-weight: 600; font-size: 13px; }
+    .payment-option-fee { font-size: 11px; color: var(--text-dim); }
+    .payment-detail {
+      font-size: 11px;
+      color: var(--text-dim);
+      background: var(--card);
+      padding: 8px;
+      border-radius: 4px;
+      font-family: monospace;
+      word-break: break-all;
+      margin-top: 8px;
+    }
+    .copy-btn {
+      background: var(--primary);
+      color: white;
+      border: none;
+      padding: 4px 10px;
+      border-radius: 4px;
+      font-size: 10px;
+      cursor: pointer;
+      margin-top: 8px;
+    }
+    .copy-btn:hover { opacity: 0.9; }
+    .payment-note {
+      font-size: 11px;
+      color: var(--text-dim);
+      text-align: center;
+      margin-top: 16px;
+      padding-top: 16px;
+      border-top: 1px solid var(--border);
+    }
   </style>
 </head>
 <body>
@@ -475,10 +563,152 @@
       <button class="btn btn-primary" style="width: 100%;" id="post-btn" onclick="postContent()">Post Now</button>
     </div>
 
-    <!-- Schedule Tab -->
+    <!-- Schedule Tab (Automation) -->
     <div class="tab-content" id="tab-schedule">
       <div class="section-header">
-        <span class="section-title">Scheduled Posts</span>
+        <span class="section-title">Automation 自動化</span>
+        <button class="btn btn-small btn-primary" onclick="showAutomationForm()">+ 新增規則</button>
+      </div>
+
+      <p style="font-size: 11px; color: var(--text-dim); margin-bottom: 12px;">
+        自動生成並發文。Set up rules to auto-generate and post content.
+      </p>
+
+      <!-- Automation Stats -->
+      <div class="stats-row">
+        <div class="stat-box"><div class="stat-value" id="auto-total">0</div><div class="stat-label">Rules</div></div>
+        <div class="stat-box"><div class="stat-value" id="auto-enabled">0</div><div class="stat-label">Active</div></div>
+        <div class="stat-box"><div class="stat-value" id="auto-posts">0</div><div class="stat-label">Posted</div></div>
+      </div>
+
+      <!-- New Automation Form (hidden by default) -->
+      <div id="automation-form" style="display: none; margin-bottom: 12px; padding: 12px; background: var(--bg); border-radius: 8px; border: 1px solid var(--border);">
+        <input type="hidden" id="automation-edit-id">
+
+        <div class="form-group" style="margin-bottom: 8px;">
+          <label style="font-size: 10px; color: var(--text-dim);">Automation Type 類型</label>
+          <select id="automation-type" style="width: 100%;" onchange="onAutomationTypeChange()">
+            <option value="recurring">🔄 Recurring Post 定時發文</option>
+            <option value="queue">📋 Content Queue 內容佇列</option>
+            <option value="engagement">💬 Smart Engagement 智慧互動</option>
+          </select>
+        </div>
+
+        <div class="form-group" style="margin-bottom: 8px;">
+          <label style="font-size: 10px; color: var(--text-dim);">Name 名稱</label>
+          <input type="text" id="automation-name" placeholder="My daily post rule...">
+        </div>
+
+        <div style="display: flex; gap: 8px; margin-bottom: 8px;">
+          <div class="form-group" style="flex: 1;">
+            <label style="font-size: 10px; color: var(--text-dim);">Platform</label>
+            <select id="automation-platform" style="width: 100%;">
+              <option value="twitter">Twitter/X</option>
+              <option value="linkedin">LinkedIn</option>
+              <option value="threads">Threads</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Recurring specific options -->
+        <div id="recurring-options">
+          <div style="display: flex; gap: 8px; margin-bottom: 8px;">
+            <div class="form-group" style="flex: 1;">
+              <label style="font-size: 10px; color: var(--text-dim);">Frequency 頻率</label>
+              <select id="automation-frequency" style="width: 100%;">
+                <option value="daily">Every Day 每天</option>
+                <option value="weekly">Weekly 每週</option>
+              </select>
+            </div>
+            <div class="form-group" style="flex: 1;">
+              <label style="font-size: 10px; color: var(--text-dim);">Time 時間</label>
+              <input type="time" id="automation-time" value="09:00" style="width: 100%;">
+            </div>
+          </div>
+          <div class="form-group" style="margin-bottom: 8px;">
+            <label style="font-size: 10px; color: var(--text-dim);">Topic 主題 (AI will generate content)</label>
+            <input type="text" id="automation-topic" placeholder="tech trends, AI news, startup insights...">
+          </div>
+        </div>
+
+        <!-- Queue specific options -->
+        <div id="queue-options" style="display: none;">
+          <div class="form-group" style="margin-bottom: 8px;">
+            <label style="font-size: 10px; color: var(--text-dim);">Post Times 發文時間 (comma-separated)</label>
+            <input type="text" id="automation-post-times" placeholder="09:00, 12:00, 18:00">
+          </div>
+          <label class="checkbox-label" style="margin-bottom: 8px;">
+            <input type="checkbox" id="automation-auto-generate" checked>
+            <span style="font-size: 11px;">Auto-generate when queue is empty 佇列空時自動生成</span>
+          </label>
+        </div>
+
+        <!-- Engagement specific options -->
+        <div id="engagement-options" style="display: none;">
+          <div class="form-group" style="margin-bottom: 8px;">
+            <label style="font-size: 10px; color: var(--text-dim);">Engagement Mode 互動模式</label>
+            <select id="automation-engagement-mode" style="width: 100%;" onchange="onEngagementModeChange()">
+              <option value="tracked_accounts">👥 Tracked Accounts 追蹤帳號</option>
+              <option value="topic_search">🔍 Topic Search 主題搜尋</option>
+            </select>
+          </div>
+          <div id="engagement-tracked-opts">
+            <div class="form-group" style="margin-bottom: 8px;">
+              <label style="font-size: 10px; color: var(--text-dim);">Max Replies Per Run 每次最多回覆</label>
+              <input type="number" id="automation-max-replies" value="5" min="1" max="20" style="width: 100%;">
+            </div>
+            <div class="form-group" style="margin-bottom: 8px;">
+              <label style="font-size: 10px; color: var(--text-dim);">Priority Tiers 優先級 (comma-separated, 1-6)</label>
+              <input type="text" id="automation-priority-tiers" placeholder="1, 2, 3" value="1, 2, 3" style="width: 100%;">
+            </div>
+          </div>
+          <div id="engagement-topic-opts" style="display: none;">
+            <div class="form-group" style="margin-bottom: 8px;">
+              <label style="font-size: 10px; color: var(--text-dim);">Search Topics 搜尋主題 (one per line)</label>
+              <textarea id="automation-search-topics" rows="3" placeholder="AI startup\nfounders\ntech trends" style="width: 100%; font-size: 11px;"></textarea>
+            </div>
+            <div class="form-group" style="margin-bottom: 8px;">
+              <label style="font-size: 10px; color: var(--text-dim);">Max Replies Per Topic 每主題最多回覆</label>
+              <input type="number" id="automation-max-per-topic" value="3" min="1" max="10" style="width: 100%;">
+            </div>
+          </div>
+          <div style="display: flex; gap: 8px; margin-bottom: 8px;">
+            <div class="form-group" style="flex: 1;">
+              <label style="font-size: 10px; color: var(--text-dim);">Check Interval 檢查間隔</label>
+              <select id="automation-check-interval" style="width: 100%;">
+                <option value="30">Every 30 min</option>
+                <option value="60" selected>Every hour</option>
+                <option value="120">Every 2 hours</option>
+                <option value="240">Every 4 hours</option>
+              </select>
+            </div>
+          </div>
+          <label class="checkbox-label" style="margin-bottom: 8px;">
+            <input type="checkbox" id="automation-use-persona" checked>
+            <span style="font-size: 11px;">Use Persona for replies 使用人設回覆</span>
+          </label>
+        </div>
+
+        <div style="display: flex; gap: 8px; justify-content: flex-end;">
+          <button class="btn btn-small btn-secondary" onclick="hideAutomationForm()">Cancel</button>
+          <button class="btn btn-small btn-primary" onclick="saveAutomation()">Save</button>
+        </div>
+      </div>
+
+      <!-- Automation List -->
+      <div id="automation-list" class="job-list">
+        <div class="empty-state">
+          <p>No automation rules yet</p>
+          <p style="font-size: 10px; margin-top: 4px;">點擊上方 "+ 新增規則" 建立自動發文</p>
+        </div>
+      </div>
+
+      <!-- Divider -->
+      <div style="margin: 16px 0; border-top: 1px solid var(--border);"></div>
+
+      <!-- Scheduled Jobs Section -->
+      <div class="section-header" style="margin-bottom: 8px;">
+        <span class="section-title" style="font-size: 12px;">Queued Posts 排程中</span>
         <button class="btn btn-small btn-secondary" onclick="clearCompleted()">Clear Done</button>
       </div>
 
@@ -489,24 +719,27 @@
         <div class="stat-box"><div class="stat-value" id="stat-failed">0</div><div class="stat-label">Failed</div></div>
       </div>
 
-      <div class="job-list" id="job-list"><div class="empty-state">No scheduled posts</div></div>
+      <div class="job-list" id="job-list"><div class="empty-state">No queued posts</div></div>
     </div>
 
     <!-- Tracked Accounts Tab -->
     <div class="tab-content" id="tab-tracked">
       <div class="section-header">
         <span class="section-title">Tracked Accounts</span>
-        <button class="btn btn-small btn-primary" id="add-tracked-btn" onclick="addTrackedAccount()">+ Add</button>
+        <div style="display: flex; gap: 6px;">
+          <button class="btn btn-small btn-secondary" onclick="refreshTrackedAccounts()">Refresh</button>
+          <button class="btn btn-small btn-primary" onclick="openTrackedConfig()">Edit List</button>
+        </div>
       </div>
 
       <p style="font-size: 11px; color: var(--text-dim); margin-bottom: 12px;">
-        Follow KOLs to boost engagement. Higher tier = higher priority.
+        Add usernames to the list, AI will auto-classify. 新增用戶名，AI 自動分類。
       </p>
 
       <div class="stats-row" style="grid-template-columns: repeat(3, 1fr);">
         <div class="stat-box"><div class="stat-value" id="tracked-total">0</div><div class="stat-label">Total</div></div>
-        <div class="stat-box"><div class="stat-value" id="tracked-defaults">0</div><div class="stat-label">Defaults</div></div>
-        <div class="stat-box"><div class="stat-value" id="tracked-custom">0</div><div class="stat-label">Custom</div></div>
+        <div class="stat-box"><div class="stat-value" id="tracked-defaults">0</div><div class="stat-label">Tier 1-3</div></div>
+        <div class="stat-box"><div class="stat-value" id="tracked-custom">0</div><div class="stat-label">Tier 4-6</div></div>
       </div>
 
       <div class="form-group">
@@ -514,11 +747,6 @@
       </div>
 
       <div id="tracked-list" class="job-list"><div class="empty-state">Loading tracked accounts...</div></div>
-
-      <div id="tracked-upgrade-cta" style="display: none; text-align: center; padding: 16px; background: var(--bg); border-radius: 8px; margin-top: 12px;">
-        <p style="font-size: 12px; margin-bottom: 8px;">Add custom accounts with Pro</p>
-        <button class="btn btn-primary btn-small" onclick="handleUpgrade()">Upgrade to Pro</button>
-      </div>
     </div>
 
     <!-- Engage Tab -->
@@ -749,6 +977,62 @@
 
   <div class="toast-container" id="toast-container"></div>
 
+  <!-- Payment Modal -->
+  <div class="modal-overlay" id="payment-modal" onclick="closePaymentModal(event)">
+    <div class="modal-content" onclick="event.stopPropagation()">
+      <div class="modal-header">
+        <span class="modal-title">💎 Upgrade to Pro - $9.99/month</span>
+        <button class="modal-close" onclick="closePaymentModal()">&times;</button>
+      </div>
+
+      <!-- USDC/USDT Option -->
+      <div class="payment-option">
+        <div class="payment-option-header">
+          <span class="payment-option-title">🪙 USDC/USDT (Recommended)</span>
+          <span class="payment-option-fee">~0% fee</span>
+        </div>
+        <div style="font-size: 11px; color: var(--text-dim); margin-bottom: 6px;">USDT (TRC20 Network):</div>
+        <div class="payment-detail" id="usdt-address">TJpXLr33FAK322tpdgHzxTRs4GAdUGy87M</div>
+        <button class="copy-btn" onclick="copyToClipboard('usdt-address')">📋 Copy USDT Address</button>
+        <div style="font-size: 11px; color: var(--text-dim); margin-top: 10px; margin-bottom: 6px;">USDC (Solana Network):</div>
+        <div class="payment-detail" id="usdc-address">9ung8ZvgFYbgMC4uj9TqkLZm6SiNsXhmbZY6VhhTaxdk</div>
+        <button class="copy-btn" onclick="copyToClipboard('usdc-address')">📋 Copy USDC Address</button>
+      </div>
+
+      <!-- Wise Option -->
+      <div class="payment-option">
+        <div class="payment-option-header">
+          <span class="payment-option-title">🏦 Wise (Bank Transfer)</span>
+          <span class="payment-option-fee">~1% fee</span>
+        </div>
+        <div style="font-size: 11px; color: var(--text-dim); margin-bottom: 4px;">USD Account (US domestic or SWIFT):</div>
+        <div class="payment-detail" id="wise-info">Name: YI CHEN CHU
+Account: 573002996611255
+Routing (ACH/Wire): 084009519
+SWIFT/BIC: TRWIUS35XXX
+Bank: Wise US Inc, Wilmington, DE</div>
+        <button class="copy-btn" onclick="copyToClipboard('wise-info')">📋 Copy Details</button>
+      </div>
+
+      <!-- PayPal Option -->
+      <div class="payment-option">
+        <div class="payment-option-header">
+          <span class="payment-option-title">💳 PayPal</span>
+          <span class="payment-option-fee">~4.4% fee</span>
+        </div>
+        <div style="font-size: 11px; color: var(--text-dim);">Send to @lmanchu or:</div>
+        <div class="payment-detail" id="paypal-info">lman.chu@gmail.com</div>
+        <button class="copy-btn" onclick="copyToClipboard('paypal-info')">📋 Copy Email</button>
+      </div>
+
+      <div class="payment-note">
+        After payment, contact us with your receipt:<br>
+        📧 <strong>lman.chu@gmail.com</strong> or Twitter: <strong>@lmanchu</strong><br><br>
+        Your account will be upgraded within 24 hours!
+      </div>
+    </div>
+  </div>
+
   <!-- WebLLM Engine (ES Module) -->
   <script type="module" src="webllm-engine.js"></script>
 
@@ -782,12 +1066,14 @@
 
       updateLoginStatus();
       loadScheduledJobs();
+      loadAutomations();
 
       // Listen for auth state changes
-      window.pulsar.onAuthStateChanged((data) => {
+      window.pulsar.onAuthStateChanged(async (data) => {
         currentUser = data.user;
         updateAuthUI();
-        updateQuotaDisplay();
+        await updateQuotaDisplay();  // This sets currentTier
+        await loadTrackedAccounts(); // Reload with updated tier
       });
 
       window.pulsar.onSchedulerUpdate((jobs) => { renderJobList(jobs); updateStats(jobs); });
@@ -1085,12 +1371,28 @@
         } else {
           if (currentPlatform === 'twitter') {
             const result = await window.pulsar.postToTwitter(content);
-            if (result.success) { showToast('Posted successfully!', 'success'); document.getElementById('content').value = ''; updateCharCount(); }
-            else { showToast('Post failed: ' + (result.error || 'Unknown error'), 'error'); }
+            if (result.success) {
+              showToast('Posted successfully!', 'success');
+              document.getElementById('content').value = '';
+              updateCharCount();
+              updateQuotaDisplay(); // Refresh quota after successful post
+            } else if (result.quotaExceeded) {
+              showToast('⚠️ Daily quota reached! Upgrade for more posts.', 'warning');
+              // Highlight upgrade button
+              const upgradeBtn = document.getElementById('upgrade-btn');
+              upgradeBtn.style.animation = 'pulse 0.5s ease-in-out 3';
+              setTimeout(() => upgradeBtn.style.animation = '', 1500);
+            } else {
+              showToast('Post failed: ' + (result.error || 'Unknown error'), 'error');
+            }
           } else { showToast('Platform not yet supported', 'error'); }
         }
       } catch (error) { showToast('Error: ' + error.message, 'error'); }
-      finally { postBtn.disabled = false; postBtn.textContent = isScheduled ? 'Schedule Post' : 'Post Now'; }
+      finally {
+        postBtn.disabled = false;
+        postBtn.textContent = isScheduled ? 'Schedule Post' : 'Post Now';
+        updateQuotaDisplay(); // Always refresh quota display
+      }
     }
 
     async function improveContent() {
@@ -1128,9 +1430,20 @@
       if (!jobs || jobs.length === 0) { container.innerHTML = '<div class="empty-state">No scheduled posts</div>'; return; }
       container.innerHTML = jobs.map(job => `
         <div class="job-item">
-          <span class="job-status ${job.status}">${job.status}</span>
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+            <span class="job-status ${job.status}">${job.status}</span>
+            ${job.status === 'pending' ? `
+              <div style="display: flex; gap: 4px;">
+                <button class="btn btn-small btn-secondary" onclick="editScheduledJob('${job.id}')" style="padding: 2px 6px; font-size: 10px;">Edit</button>
+                <button class="btn btn-small" onclick="deleteScheduledJob('${job.id}')" style="padding: 2px 6px; font-size: 10px; background: var(--error); color: white;">×</button>
+              </div>
+            ` : ''}
+          </div>
           <div class="job-content">${escapeHtml(job.content).substring(0, 100)}${job.content.length > 100 ? '...' : ''}</div>
-          <div class="job-time">${new Date(job.scheduledAt).toLocaleString()}</div>
+          <div class="job-time" style="display: flex; justify-content: space-between;">
+            <span>${job.platform || 'twitter'}</span>
+            <span>${new Date(job.scheduledAt).toLocaleString()}</span>
+          </div>
         </div>
       `).join('');
     }
@@ -1147,6 +1460,375 @@
     async function clearCompleted() {
       await window.pulsar.clearCompletedJobs(); loadScheduledJobs(); showToast('Completed jobs cleared', 'success');
     }
+
+    // Schedule Form Functions
+    let cachedJobs = [];
+
+    function showScheduleForm(editId = null) {
+      const form = document.getElementById('schedule-form');
+      const editIdField = document.getElementById('schedule-edit-id');
+      const contentField = document.getElementById('schedule-content');
+      const platformField = document.getElementById('schedule-platform');
+      const datetimeField = document.getElementById('schedule-datetime');
+
+      if (editId) {
+        // Edit mode - find the job and prefill
+        const job = cachedJobs.find(j => j.id === editId);
+        if (job) {
+          editIdField.value = job.id;
+          contentField.value = job.content;
+          platformField.value = job.platform || 'twitter';
+          // Convert timestamp to datetime-local format
+          const dt = new Date(job.scheduledAt);
+          datetimeField.value = dt.toISOString().slice(0, 16);
+        }
+      } else {
+        // New mode - clear and set default time (1 hour from now)
+        editIdField.value = '';
+        contentField.value = '';
+        platformField.value = 'twitter';
+        const defaultTime = new Date(Date.now() + 60 * 60 * 1000);
+        datetimeField.value = defaultTime.toISOString().slice(0, 16);
+      }
+
+      form.style.display = 'block';
+      contentField.focus();
+    }
+
+    function hideScheduleForm() {
+      document.getElementById('schedule-form').style.display = 'none';
+    }
+
+    async function saveScheduledPost() {
+      const editId = document.getElementById('schedule-edit-id').value;
+      const content = document.getElementById('schedule-content').value.trim();
+      const platform = document.getElementById('schedule-platform').value;
+      const datetime = document.getElementById('schedule-datetime').value;
+
+      if (!content) { showToast('Please enter content', 'error'); return; }
+      if (!datetime) { showToast('Please select a time', 'error'); return; }
+
+      const scheduledAt = new Date(datetime).getTime();
+      if (scheduledAt <= Date.now()) { showToast('Time must be in the future', 'error'); return; }
+
+      try {
+        if (editId) {
+          // Update existing job
+          await window.pulsar.updateScheduledJob(editId, { content, platform, scheduledAt });
+          showToast('Schedule updated!', 'success');
+        } else {
+          // Create new job
+          await window.pulsar.schedulePost(platform, content, scheduledAt);
+          showToast('Post scheduled!', 'success');
+        }
+        hideScheduleForm();
+        loadScheduledJobs();
+      } catch (error) {
+        showToast('Failed: ' + error.message, 'error');
+      }
+    }
+
+    function editScheduledJob(jobId) {
+      showScheduleForm(jobId);
+    }
+
+    async function deleteScheduledJob(jobId) {
+      if (!confirm('Delete this scheduled post?')) return;
+      try {
+        await window.pulsar.deleteScheduledJob(jobId);
+        showToast('Deleted', 'success');
+        loadScheduledJobs();
+      } catch (error) {
+        showToast('Failed to delete: ' + error.message, 'error');
+      }
+    }
+
+    // Override loadScheduledJobs to cache jobs for editing
+    const _originalLoadScheduledJobs = loadScheduledJobs;
+    async function loadScheduledJobs() {
+      const jobs = await window.pulsar.getScheduledJobs();
+      cachedJobs = jobs || [];
+      renderJobList(cachedJobs);
+      updateStats(cachedJobs);
+    }
+
+    // ============================================
+    // Automation Functions (自動化排程)
+    // ============================================
+
+    let cachedAutomations = [];
+
+    async function loadAutomations() {
+      try {
+        const automations = await window.pulsar.getAutomations();
+        cachedAutomations = automations || [];
+        renderAutomationList(cachedAutomations);
+        updateAutomationStats();
+      } catch (error) {
+        console.error('[Automation] Load failed:', error);
+      }
+    }
+
+    async function updateAutomationStats() {
+      try {
+        const stats = await window.pulsar.getAutomationStats();
+        document.getElementById('auto-total').textContent = stats.total || 0;
+        document.getElementById('auto-enabled').textContent = stats.enabled || 0;
+        document.getElementById('auto-posts').textContent = stats.totalPosts || 0;
+      } catch (error) {
+        console.error('[Automation] Stats failed:', error);
+      }
+    }
+
+    function renderAutomationList(automations) {
+      const container = document.getElementById('automation-list');
+      if (!automations || automations.length === 0) {
+        container.innerHTML = `
+          <div class="empty-state">
+            <p>No automation rules yet</p>
+            <p style="font-size: 10px; margin-top: 4px;">點擊上方 "+ 新增規則" 建立自動發文</p>
+          </div>
+        `;
+        return;
+      }
+
+      container.innerHTML = automations.map(auto => {
+        const typeIcon = auto.type === 'recurring' ? '🔄' : auto.type === 'queue' ? '📋' : auto.type === 'engagement' ? '💬' : '🤖';
+        const typeLabel = auto.type === 'engagement' ? (auto.config?.engagementMode === 'topic_search' ? 'Topic Search' : 'Tracked Accounts') : '';
+        const nextRun = auto.stats?.nextRunAt ? new Date(auto.stats.nextRunAt).toLocaleString() : 'Not scheduled';
+        const statusClass = auto.enabled ? 'pending' : 'failed';
+
+        return `
+          <div class="job-item" style="opacity: ${auto.enabled ? '1' : '0.6'};">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+              <span class="job-status ${statusClass}">
+                ${typeIcon} ${auto.enabled ? 'Active' : 'Paused'}
+              </span>
+              <div style="display: flex; gap: 4px;">
+                <button class="btn btn-small btn-secondary" onclick="toggleAutomation('${auto.id}', ${!auto.enabled})" style="padding: 2px 6px; font-size: 10px;">
+                  ${auto.enabled ? '⏸ Pause' : '▶ Start'}
+                </button>
+                <button class="btn btn-small btn-primary" onclick="triggerAutomation('${auto.id}')" style="padding: 2px 6px; font-size: 10px;">
+                  ⚡ Run Now
+                </button>
+                <button class="btn btn-small" onclick="deleteAutomation('${auto.id}')" style="padding: 2px 6px; font-size: 10px; background: var(--error); color: white;">×</button>
+              </div>
+            </div>
+            <div class="job-content" style="font-weight: 500;">${escapeHtml(auto.name)}</div>
+            <div class="job-time" style="display: flex; justify-content: space-between; font-size: 10px; color: var(--text-dim);">
+              <span>${auto.platform} · ${auto.type}${typeLabel ? ' (' + typeLabel + ')' : ''}</span>
+              <span>Next: ${nextRun}</span>
+            </div>
+            <div style="font-size: 10px; color: var(--text-dim); margin-top: 4px;">
+              ${auto.type === 'engagement' ? 'Replies' : 'Posts'}: ${auto.stats?.successfulPosts || 0} · Runs: ${auto.stats?.totalRuns || 0}
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function showAutomationForm(editId = null) {
+      const form = document.getElementById('automation-form');
+      const editIdField = document.getElementById('automation-edit-id');
+
+      if (editId) {
+        const auto = cachedAutomations.find(a => a.id === editId);
+        if (auto) {
+          editIdField.value = auto.id;
+          document.getElementById('automation-type').value = auto.type;
+          document.getElementById('automation-name').value = auto.name;
+          document.getElementById('automation-platform').value = auto.platform;
+
+          if (auto.type === 'recurring') {
+            document.getElementById('automation-frequency').value = auto.config?.frequency || 'daily';
+            document.getElementById('automation-time').value = auto.config?.time || '09:00';
+            document.getElementById('automation-topic').value = auto.config?.topic || '';
+          } else if (auto.type === 'queue') {
+            document.getElementById('automation-post-times').value = (auto.config?.postTimes || []).join(', ');
+            document.getElementById('automation-auto-generate').checked = auto.config?.autoGenerate !== false;
+          } else if (auto.type === 'engagement') {
+            document.getElementById('automation-engagement-mode').value = auto.config?.engagementMode || 'tracked_accounts';
+            document.getElementById('automation-check-interval').value = auto.config?.checkIntervalMinutes || 60;
+            document.getElementById('automation-use-persona').checked = auto.config?.usePersona !== false;
+
+            if (auto.config?.engagementMode === 'tracked_accounts') {
+              document.getElementById('automation-max-replies').value = auto.config?.maxRepliesPerRun || 5;
+              document.getElementById('automation-priority-tiers').value = (auto.config?.priorityTiers || [1,2,3]).join(', ');
+            } else if (auto.config?.engagementMode === 'topic_search') {
+              document.getElementById('automation-search-topics').value = (auto.config?.searchTopics || []).join('\n');
+              document.getElementById('automation-max-per-topic').value = auto.config?.maxRepliesPerTopic || 3;
+            }
+          }
+
+          onAutomationTypeChange();
+        }
+      } else {
+        editIdField.value = '';
+        document.getElementById('automation-type').value = 'recurring';
+        document.getElementById('automation-name').value = '';
+        document.getElementById('automation-platform').value = 'twitter';
+        document.getElementById('automation-frequency').value = 'daily';
+        document.getElementById('automation-time').value = '09:00';
+        document.getElementById('automation-topic').value = '';
+        document.getElementById('automation-post-times').value = '09:00, 12:00, 18:00';
+        document.getElementById('automation-auto-generate').checked = true;
+        onAutomationTypeChange();
+      }
+
+      form.style.display = 'block';
+    }
+
+    function hideAutomationForm() {
+      document.getElementById('automation-form').style.display = 'none';
+    }
+
+    function onAutomationTypeChange() {
+      const type = document.getElementById('automation-type').value;
+      document.getElementById('recurring-options').style.display = type === 'recurring' ? 'block' : 'none';
+      document.getElementById('queue-options').style.display = type === 'queue' ? 'block' : 'none';
+      document.getElementById('engagement-options').style.display = type === 'engagement' ? 'block' : 'none';
+
+      // If engagement, also update sub-options
+      if (type === 'engagement') {
+        onEngagementModeChange();
+      }
+    }
+
+    function onEngagementModeChange() {
+      const mode = document.getElementById('automation-engagement-mode').value;
+      document.getElementById('engagement-tracked-opts').style.display = mode === 'tracked_accounts' ? 'block' : 'none';
+      document.getElementById('engagement-topic-opts').style.display = mode === 'topic_search' ? 'block' : 'none';
+    }
+
+    async function saveAutomation() {
+      const editId = document.getElementById('automation-edit-id').value;
+      const type = document.getElementById('automation-type').value;
+      const name = document.getElementById('automation-name').value.trim();
+      const platform = document.getElementById('automation-platform').value;
+
+      if (!name) {
+        showToast('Please enter a name 請輸入名稱', 'error');
+        return;
+      }
+
+      let config = {};
+
+      if (type === 'recurring') {
+        const topic = document.getElementById('automation-topic').value.trim();
+        if (!topic) {
+          showToast('Please enter a topic 請輸入主題', 'error');
+          return;
+        }
+        config = {
+          frequency: document.getElementById('automation-frequency').value,
+          time: document.getElementById('automation-time').value,
+          topic
+        };
+      } else if (type === 'queue') {
+        const postTimesStr = document.getElementById('automation-post-times').value;
+        const postTimes = postTimesStr.split(',').map(t => t.trim()).filter(t => /^\d{2}:\d{2}$/.test(t));
+        if (postTimes.length === 0) {
+          showToast('Please enter valid post times', 'error');
+          return;
+        }
+        config = {
+          postTimes,
+          autoGenerate: document.getElementById('automation-auto-generate').checked,
+          defaultTopic: document.getElementById('automation-topic').value.trim() || 'tech'
+        };
+      } else if (type === 'engagement') {
+        const engagementMode = document.getElementById('automation-engagement-mode').value;
+        const checkInterval = parseInt(document.getElementById('automation-check-interval').value);
+        const usePersona = document.getElementById('automation-use-persona').checked;
+
+        config = {
+          engagementMode,
+          checkIntervalMinutes: checkInterval,
+          usePersona
+        };
+
+        if (engagementMode === 'tracked_accounts') {
+          const maxReplies = parseInt(document.getElementById('automation-max-replies').value) || 5;
+          const tiersStr = document.getElementById('automation-priority-tiers').value;
+          const priorityTiers = tiersStr.split(',').map(t => parseInt(t.trim())).filter(t => t >= 1 && t <= 6);
+
+          config.maxRepliesPerRun = maxReplies;
+          config.priorityTiers = priorityTiers.length > 0 ? priorityTiers : [1, 2, 3];
+        } else if (engagementMode === 'topic_search') {
+          const topicsText = document.getElementById('automation-search-topics').value;
+          const topics = topicsText.split('\n').map(t => t.trim()).filter(t => t.length > 0);
+          const maxPerTopic = parseInt(document.getElementById('automation-max-per-topic').value) || 3;
+
+          if (topics.length === 0) {
+            showToast('Please enter at least one search topic 請輸入至少一個搜尋主題', 'error');
+            return;
+          }
+
+          config.searchTopics = topics;
+          config.maxRepliesPerTopic = maxPerTopic;
+        }
+      }
+
+      try {
+        if (editId) {
+          await window.pulsar.updateAutomation(editId, { name, platform, config });
+          showToast('Automation updated!', 'success');
+        } else {
+          await window.pulsar.addAutomation({ type, name, platform, config });
+          showToast('Automation created!', 'success');
+        }
+        hideAutomationForm();
+        loadAutomations();
+      } catch (error) {
+        showToast('Failed: ' + error.message, 'error');
+      }
+    }
+
+    async function toggleAutomation(id, enabled) {
+      try {
+        await window.pulsar.toggleAutomation(id, enabled);
+        showToast(enabled ? 'Automation started' : 'Automation paused', 'success');
+        loadAutomations();
+      } catch (error) {
+        showToast('Failed: ' + error.message, 'error');
+      }
+    }
+
+    async function triggerAutomation(id) {
+      try {
+        showToast('Running automation...', 'info');
+        const result = await window.pulsar.triggerAutomation(id);
+        if (result.success) {
+          showToast('Automation triggered! Check queued posts.', 'success');
+          loadAutomations();
+          loadScheduledJobs();
+        } else {
+          showToast('Failed: ' + result.error, 'error');
+        }
+      } catch (error) {
+        showToast('Failed: ' + error.message, 'error');
+      }
+    }
+
+    async function deleteAutomation(id) {
+      if (!confirm('Delete this automation rule? 確定刪除此自動化規則？')) return;
+      try {
+        await window.pulsar.deleteAutomation(id);
+        showToast('Automation deleted', 'success');
+        loadAutomations();
+      } catch (error) {
+        showToast('Failed: ' + error.message, 'error');
+      }
+    }
+
+    // Listen for automation updates
+    window.pulsar.onAutomationUpdate?.((data) => {
+      console.log('[Automation] Update received:', data.type);
+      loadAutomations();
+      if (data.type === 'triggered') {
+        loadScheduledJobs();
+      }
+    });
 
     function setupKnowledgeUpload() {
       const fileInput = document.getElementById('knowledge-file');
@@ -1636,6 +2318,9 @@
         // Update auth UI with current tier
         updateAuthUI();
 
+        // Refresh AI Provider UI to update Pro-only features
+        handleProviderChange();
+
       } catch (error) {
         console.error('Quota update failed:', error);
       }
@@ -1643,19 +2328,31 @@
 
     async function handleUpgrade() {
       if (!currentUser) {
-        showToast('Please login first', 'error');
+        showToast('Please login first to upgrade', 'error');
         handleLogin();
         return;
       }
-      try {
-        showToast('Opening checkout...', 'info');
-        const result = await window.pulsar.createCheckoutSession();
-        if (!result.success) {
-          showToast('Checkout failed: ' + result.error, 'error');
-        }
-      } catch (error) {
-        showToast('Error: ' + error.message, 'error');
+      // Open payment popup window
+      await window.pulsar.openPaymentPopup();
+    }
+
+    function openPaymentModal() {
+      document.getElementById('payment-modal').classList.add('show');
+    }
+
+    function closePaymentModal(event) {
+      if (!event || event.target === event.currentTarget) {
+        document.getElementById('payment-modal').classList.remove('show');
       }
+    }
+
+    function copyToClipboard(elementId) {
+      const text = document.getElementById(elementId).textContent;
+      navigator.clipboard.writeText(text).then(() => {
+        showToast('Copied to clipboard!', 'success');
+      }).catch(() => {
+        showToast('Failed to copy', 'error');
+      });
     }
 
     async function handleSubscriptionAction() {
@@ -1689,21 +2386,33 @@
         document.getElementById('tracked-custom').textContent = data.custom?.length || 0;
 
         renderTrackedAccountsList(data.all || []);
-
-        // Show upgrade CTA for free users
-        const upgradeCta = document.getElementById('tracked-upgrade-cta');
-        const addBtn = document.getElementById('add-tracked-btn');
-        if (currentTier !== 'pro') {
-          upgradeCta.style.display = 'block';
-          addBtn.style.display = 'none';
-        } else {
-          upgradeCta.style.display = 'none';
-          addBtn.style.display = 'block';
-        }
       } catch (error) {
         console.error('Failed to load tracked accounts:', error);
         document.getElementById('tracked-list').innerHTML =
           '<div class="empty-state">Failed to load accounts</div>';
+      }
+    }
+
+    // Open tracked accounts markdown file in editor
+    async function openTrackedConfig() {
+      try {
+        const result = await window.pulsar.openTrackedAccountsConfig();
+        if (result.success) {
+          showToast('Add usernames (one per line), save, then Refresh. AI will classify.', 'success');
+        }
+      } catch (error) {
+        showToast('Failed to open config: ' + error.message, 'error');
+      }
+    }
+
+    // Refresh tracked accounts from config file
+    async function refreshTrackedAccounts() {
+      try {
+        await window.pulsar.refreshTrackedAccounts();
+        await loadTrackedAccounts();
+        showToast('Accounts refreshed!', 'success');
+      } catch (error) {
+        showToast('Failed to refresh: ' + error.message, 'error');
       }
     }
 
@@ -1724,13 +2433,12 @@
       };
 
       container.innerHTML = accounts.slice(0, 30).map(account => `
-        <div class="job-item" style="display: flex; align-items: center; gap: 10px;">
+        <div class="job-item" style="display: flex; align-items: center; gap: 10px; opacity: ${account.enabled === false ? '0.5' : '1'};">
           <div style="width: 8px; height: 8px; border-radius: 50%; background: ${tierColors[account.tier] || '#6b7280'};" title="Tier ${account.tier}"></div>
           <div style="flex: 1;">
             <div style="font-size: 12px; font-weight: 500;">@${escapeHtml(account.username)}</div>
             <div style="font-size: 10px; color: var(--text-dim);">${escapeHtml(account.display_name || '')} • ${account.category || 'unknown'}</div>
           </div>
-          ${!account.is_default ? `<button class="btn btn-small btn-secondary" onclick="removeTrackedAccount('${account.id}')">×</button>` : ''}
         </div>
       `).join('');
 
@@ -1754,7 +2462,8 @@
     }
 
     async function addTrackedAccount() {
-      if (currentTier !== 'pro') {
+      const canAddAccounts = ['starter', 'pro', 'agency'].includes(currentTier);
+      if (!canAddAccounts) {
         handleUpgrade();
         return;
       }
@@ -1907,11 +2616,14 @@
         updateBYOKModels();
       } else if (provider === 'cliproxy') {
         document.getElementById('cliproxy-config').style.display = 'block';
-        // Check if Pro user
-        if (currentTier !== 'pro') {
-          document.getElementById('cliproxy-pro-notice').innerHTML =
+        // Check if Pro user - show upgrade notice or clear it
+        const proNotice = document.getElementById('cliproxy-pro-notice');
+        if (currentTier !== 'pro' && currentTier !== 'agency') {
+          proNotice.innerHTML =
             '<p style="font-size: 11px; color: #f59e0b;">Upgrade to Pro to use backend AI</p>' +
             '<button class="btn btn-small btn-primary" style="margin-top: 8px;" onclick="handleSubscriptionAction()">Upgrade</button>';
+        } else {
+          proNotice.innerHTML = ''; // Clear upgrade notice for Pro/Agency users
         }
       }
     }

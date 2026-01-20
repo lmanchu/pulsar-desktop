@@ -85,9 +85,9 @@ class AIProvider {
   // Provider Management
   // ============================================
 
-  async setProvider(providerType, userTier = 'free') {
-    // Validate provider based on tier
-    if (providerType === 'cliproxy' && userTier !== 'pro') {
+  async setProvider(providerType, userTier = 'free', skipTierCheck = false) {
+    // Validate provider based on tier (skip during auto-restore from config)
+    if (!skipTierCheck && providerType === 'cliproxy' && userTier !== 'pro') {
       return { success: false, error: 'CLIProxy requires Pro subscription' };
     }
 
@@ -352,10 +352,10 @@ Output only the reply content, nothing else.`;
   async initialize() {
     this.initIPCHandlers();
 
-    // Auto-restore last used provider
+    // Auto-restore last used provider (skip tier check - user already configured it)
     if (this.config.provider && this.config.provider !== 'none') {
       console.log(`[AIProvider] Restoring provider: ${this.config.provider}`);
-      await this.setProvider(this.config.provider);
+      await this.setProvider(this.config.provider, 'free', true); // skipTierCheck = true
     }
 
     console.log('[AIProvider] Initialized');

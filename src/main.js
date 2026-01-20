@@ -15,6 +15,9 @@ const subscriptionManager = require('./subscription/subscription-manager');
 // AI Provider System
 const aiProvider = require('./ai/ai-provider');
 
+// Automation System
+const automationManager = require('./automation/automation-manager');
+
 let mainWindow;
 let browserView;
 let browser; // Puppeteer browser instance
@@ -425,6 +428,15 @@ ipcMain.handle('deleteScheduledJob', async (event, jobId) => {
   return { success: true };
 });
 
+// Update a scheduled job
+ipcMain.handle('updateScheduledJob', async (event, { jobId, updates }) => {
+  const job = scheduler.updateJob(jobId, updates);
+  if (mainWindow) {
+    mainWindow.webContents.send('scheduler-update', scheduler.getJobs());
+  }
+  return { success: true, job };
+});
+
 // Clear completed jobs
 ipcMain.handle('clearCompletedJobs', async () => {
   scheduler.clearCompleted();
@@ -432,6 +444,109 @@ ipcMain.handle('clearCompletedJobs', async () => {
     mainWindow.webContents.send('scheduler-update', scheduler.getJobs());
   }
   return { success: true };
+});
+
+// ============================================
+// Automation IPC Handlers (自動化排程)
+// ============================================
+
+// Get all automations
+ipcMain.handle('automation:getAll', async () => {
+  return automationManager.getAutomations();
+});
+
+// Get automation statistics
+ipcMain.handle('automation:getStats', async () => {
+  return automationManager.getStats();
+});
+
+// Add a new automation
+ipcMain.handle('automation:add', async (event, automation) => {
+  console.log('[Pulsar] Adding automation:', automation.type, automation.name);
+  const newAutomation = automationManager.addAutomation(automation);
+  if (mainWindow) {
+    mainWindow.webContents.send('automation-update', {
+      type: 'added',
+      automation: newAutomation,
+      all: automationManager.getAutomations()
+    });
+  }
+  return newAutomation;
+});
+
+// Update an automation
+ipcMain.handle('automation:update', async (event, { id, updates }) => {
+  const automation = automationManager.updateAutomation(id, updates);
+  if (mainWindow) {
+    mainWindow.webContents.send('automation-update', {
+      type: 'updated',
+      automation,
+      all: automationManager.getAutomations()
+    });
+  }
+  return automation;
+});
+
+// Delete an automation
+ipcMain.handle('automation:delete', async (event, id) => {
+  automationManager.deleteAutomation(id);
+  if (mainWindow) {
+    mainWindow.webContents.send('automation-update', {
+      type: 'deleted',
+      id,
+      all: automationManager.getAutomations()
+    });
+  }
+  return { success: true };
+});
+
+// Toggle automation enabled/disabled
+ipcMain.handle('automation:toggle', async (event, { id, enabled }) => {
+  const automation = automationManager.toggleAutomation(id, enabled);
+  if (mainWindow) {
+    mainWindow.webContents.send('automation-update', {
+      type: 'toggled',
+      automation,
+      all: automationManager.getAutomations()
+    });
+  }
+  return automation;
+});
+
+// Manually trigger an automation
+ipcMain.handle('automation:trigger', async (event, id) => {
+  console.log('[Pulsar] Manually triggering automation:', id);
+  try {
+    const automation = await automationManager.triggerNow(id);
+    if (mainWindow) {
+      mainWindow.webContents.send('automation-update', {
+        type: 'triggered',
+        automation,
+        all: automationManager.getAutomations()
+      });
+    }
+    return { success: true, automation };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
+
+// Add content to a queue automation
+ipcMain.handle('automation:addToQueue', async (event, { id, content }) => {
+  const automation = automationManager.addToQueue(id, content);
+  if (automation && mainWindow) {
+    mainWindow.webContents.send('automation-update', {
+      type: 'queueUpdated',
+      automation,
+      all: automationManager.getAutomations()
+    });
+  }
+  return automation;
+});
+
+// Get queue contents
+ipcMain.handle('automation:getQueue', async (event, id) => {
+  return automationManager.getQueueContents(id);
 });
 
 // ============================================
@@ -813,8 +928,19 @@ ipcMain.handle('generateWithPersona', async (event, { prompt, platform, useKnowl
 async function executeScheduledJob(job) {
   console.log('[Pulsar] Executing scheduled job:', job.id, job.platform);
 
+  // Step 0: Request post token (anti-hack - even scheduled posts need tokens)
+  const tokenResult = await quotaManager.requestPostToken(job.platform, job.content);
+  if (!tokenResult.success) {
+    console.log('[Pulsar] Scheduled job blocked by quota:', tokenResult.error);
+    return {
+      success: false,
+      error: tokenResult.error,
+      quotaExceeded: true
+    };
+  }
+  const postToken = tokenResult.token;
+
   if (job.platform === 'twitter') {
-    // Reuse the postToTwitter logic
     try {
       await browserView.webContents.loadURL('https://x.com/compose/post');
       await new Promise(resolve => setTimeout(resolve, 2500));
@@ -839,7 +965,11 @@ async function executeScheduledJob(job) {
         })()
       `);
 
-      if (!focusResult.success) return focusResult;
+      if (!focusResult.success) {
+        // Refund token on failure
+        await quotaManager.confirmPostToken(postToken, false, null, focusResult.error);
+        return focusResult;
+      }
 
       await new Promise(resolve => setTimeout(resolve, 300));
 
@@ -864,14 +994,748 @@ async function executeScheduledJob(job) {
         })()
       `);
 
+      // Confirm token usage
+      await quotaManager.confirmPostToken(postToken, result.success, null, result.success ? null : result.error);
+
       return result;
     } catch (error) {
+      // Refund token on error
+      await quotaManager.confirmPostToken(postToken, false, null, error.message);
       return { success: false, error: error.message };
     }
   }
 
+  // Refund token for unsupported platform
+  await quotaManager.confirmPostToken(postToken, false, null, 'Platform not supported');
   return { success: false, error: 'Platform not supported: ' + job.platform };
 }
+
+// ============================================
+// Engagement Task Execution (for automation)
+// ============================================
+
+async function executeEngagementTask(options) {
+  const {
+    type,
+    username,
+    searchQuery,
+    maxResults = 5,
+    aiProvider: ai,
+    usePersona,
+    checkReplied,
+    markReplied
+  } = options;
+
+  console.log('[Engagement] Executing:', type, username || searchQuery);
+
+  try {
+    if (type === 'tracked_account') {
+      return await executeTrackedAccountEngagement(username, ai, usePersona, checkReplied, markReplied);
+    } else if (type === 'topic_search') {
+      return await executeTopicSearchEngagement(searchQuery, maxResults, ai, usePersona, checkReplied, markReplied);
+    }
+    return { success: false, error: 'Unknown engagement type: ' + type };
+  } catch (error) {
+    console.error('[Engagement] Task failed:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+// Engage with a tracked account's posts
+async function executeTrackedAccountEngagement(username, ai, usePersona, checkReplied, markReplied) {
+  console.log('[Engagement] Visiting tracked account:', username);
+
+  // Navigate to user's profile
+  await browserView.webContents.loadURL(`https://x.com/${username}`);
+  await new Promise(resolve => setTimeout(resolve, 3000));
+
+  // Find recent posts and select one to reply to
+  const postData = await browserView.webContents.executeJavaScript(`
+    (function() {
+      // Find tweet articles
+      const articles = document.querySelectorAll('article[data-testid="tweet"]');
+      const posts = [];
+
+      for (const article of articles) {
+        // Skip pinned tweets
+        if (article.querySelector('[data-testid="socialContext"]')?.textContent?.includes('Pinned')) {
+          continue;
+        }
+
+        // Get the tweet link for unique ID
+        const linkEl = article.querySelector('a[href*="/status/"]');
+        if (!linkEl) continue;
+
+        const postUrl = linkEl.href;
+        const postId = postUrl.match(/status\\/(\\d+)/)?.[1];
+        if (!postId) continue;
+
+        // Get tweet text
+        const textEl = article.querySelector('[data-testid="tweetText"]');
+        const text = textEl ? textEl.innerText : '';
+
+        // Get author
+        const authorEl = article.querySelector('[data-testid="User-Name"]');
+        const author = authorEl ? authorEl.innerText.split('\\n')[0] : '';
+
+        posts.push({
+          postId,
+          postUrl,
+          text: text.substring(0, 500),
+          author
+        });
+
+        if (posts.length >= 5) break;
+      }
+
+      return posts;
+    })()
+  `);
+
+  if (!postData || postData.length === 0) {
+    console.log('[Engagement] No posts found for', username);
+    return { success: false, error: 'No posts found' };
+  }
+
+  // Find a post we haven't replied to
+  let targetPost = null;
+  for (const post of postData) {
+    if (!checkReplied(post.postId)) {
+      targetPost = post;
+      break;
+    }
+  }
+
+  if (!targetPost) {
+    console.log('[Engagement] Already replied to all recent posts from', username);
+    return { success: false, error: 'Already replied to recent posts' };
+  }
+
+  console.log('[Engagement] Found post to reply:', targetPost.postId);
+
+  // Generate AI reply
+  let replyText;
+  try {
+    const hasPersona = usePersona && personaBuilder.exists();
+    const personaPrompt = hasPersona ? personaBuilder.getPromptForPlatform('twitter') : '';
+
+    const generatePrompt = `Reply to this tweet from @${username}: "${targetPost.text}"
+
+Requirements:
+- Be genuine and add value to the conversation
+- Keep it under 200 characters
+- Don't use hashtags or emojis excessively
+- Sound natural, not like a bot
+- Just return the reply text, nothing else`;
+
+    const result = await ai.generate(generatePrompt, {
+      systemPrompt: personaPrompt || 'You are a helpful Twitter user who engages authentically.',
+      maxTokens: 100
+    });
+
+    console.log('[Engagement] AI result:', JSON.stringify(result).substring(0, 200));
+
+    if (!result.success) {
+      console.error('[Engagement] AI generation failed:', result.error);
+      return { success: false, error: result.error || 'AI generation failed' };
+    }
+
+    // Extract text from result - handle different response formats
+    replyText = result.text || result.content || '';
+    if (typeof replyText !== 'string') {
+      console.error('[Engagement] Unexpected reply type:', typeof replyText);
+      return { success: false, error: 'Invalid AI response format' };
+    }
+    // Clean up the reply
+    replyText = replyText.replace(/^["']|["']$/g, '').trim();
+  } catch (error) {
+    console.error('[Engagement] AI generation error:', error);
+    return { success: false, error: 'AI generation failed: ' + error.message };
+  }
+
+  if (!replyText || replyText.length < 5) {
+    console.log('[Engagement] Reply too short:', replyText);
+    return { success: false, error: 'Generated reply too short' };
+  }
+
+  console.log('[Engagement] Generated reply:', replyText.substring(0, 50) + '...');
+
+  // Navigate to the tweet and reply
+  await browserView.webContents.loadURL(targetPost.postUrl);
+  await new Promise(resolve => setTimeout(resolve, 2500));
+
+  // Click reply button and send reply
+  const replyResult = await browserView.webContents.executeJavaScript(`
+    (async function() {
+      // Find and click the reply button
+      const replyBtn = document.querySelector('[data-testid="reply"]');
+      if (!replyBtn) {
+        return { success: false, error: 'Reply button not found' };
+      }
+      replyBtn.click();
+      await new Promise(r => setTimeout(r, 1500));
+      return { success: true, clicked: true };
+    })()
+  `);
+
+  if (!replyResult.success) {
+    return replyResult;
+  }
+
+  // Wait for reply modal to open
+  await new Promise(resolve => setTimeout(resolve, 1000));
+
+  // Focus the reply textarea
+  const focusResult = await browserView.webContents.executeJavaScript(`
+    (async function() {
+      const selectors = [
+        '[data-testid="tweetTextarea_0"]',
+        'div[contenteditable="true"][role="textbox"]',
+        '[aria-label="Post text"]',
+        '[aria-label="Tweet text"]'
+      ];
+
+      for (const selector of selectors) {
+        const el = document.querySelector(selector);
+        if (el) {
+          el.click();
+          el.focus();
+          return { success: true };
+        }
+      }
+      return { success: false, error: 'Reply textarea not found' };
+    })()
+  `);
+
+  if (!focusResult.success) {
+    return focusResult;
+  }
+
+  await new Promise(resolve => setTimeout(resolve, 300));
+
+  // Insert reply text via CDP
+  await browserView.webContents.debugger.sendCommand('Input.insertText', {
+    text: replyText
+  });
+
+  await new Promise(resolve => setTimeout(resolve, 1500));
+
+  // Click the reply/post button
+  const sendResult = await browserView.webContents.executeJavaScript(`
+    (async function() {
+      await new Promise(r => setTimeout(r, 500));
+
+      // Find the reply button in the modal
+      const postBtnSelectors = [
+        '[data-testid="tweetButton"]',
+        '[data-testid="tweetButtonInline"]',
+        'button[data-testid*="tweet"]'
+      ];
+
+      let postBtn = null;
+      for (const selector of postBtnSelectors) {
+        const btn = document.querySelector(selector);
+        if (btn && btn.getAttribute('aria-disabled') !== 'true') {
+          postBtn = btn;
+          break;
+        }
+      }
+
+      if (!postBtn) {
+        return { success: false, error: 'Send button not found or disabled' };
+      }
+
+      postBtn.click();
+      await new Promise(r => setTimeout(r, 2500));
+
+      // Check if modal closed (success indicator)
+      const modalStillOpen = document.querySelector('[data-testid="tweetTextarea_0"]');
+      return { success: !modalStillOpen };
+    })()
+  `);
+
+  if (sendResult.success) {
+    // Mark as replied
+    markReplied(targetPost.postId);
+    console.log('[Engagement] Successfully replied to', targetPost.postUrl);
+  }
+
+  return {
+    success: sendResult.success,
+    postId: targetPost.postId,
+    postUrl: targetPost.postUrl,
+    reply: replyText
+  };
+}
+
+// Search for topics and engage with posts
+async function executeTopicSearchEngagement(searchQuery, maxResults, ai, usePersona, checkReplied, markReplied) {
+  console.log('[Engagement] Searching for topic:', searchQuery);
+
+  // Navigate to Twitter search (latest tab)
+  const encodedQuery = encodeURIComponent(searchQuery);
+  await browserView.webContents.loadURL(`https://x.com/search?q=${encodedQuery}&f=live`);
+  await new Promise(resolve => setTimeout(resolve, 3000));
+
+  // Find posts to engage with
+  const posts = await browserView.webContents.executeJavaScript(`
+    (function() {
+      const articles = document.querySelectorAll('article[data-testid="tweet"]');
+      const posts = [];
+
+      for (const article of articles) {
+        const linkEl = article.querySelector('a[href*="/status/"]');
+        if (!linkEl) continue;
+
+        const postUrl = linkEl.href;
+        const postId = postUrl.match(/status\\/(\\d+)/)?.[1];
+        if (!postId) continue;
+
+        const textEl = article.querySelector('[data-testid="tweetText"]');
+        const text = textEl ? textEl.innerText : '';
+
+        // Skip if no meaningful text
+        if (text.length < 20) continue;
+
+        const authorEl = article.querySelector('[data-testid="User-Name"]');
+        const authorText = authorEl ? authorEl.innerText : '';
+        const authorMatch = authorText.match(/@(\\w+)/);
+        const author = authorMatch ? authorMatch[1] : '';
+
+        posts.push({
+          postId,
+          postUrl,
+          text: text.substring(0, 500),
+          author
+        });
+
+        if (posts.length >= 10) break;
+      }
+
+      return posts;
+    })()
+  `);
+
+  if (!posts || posts.length === 0) {
+    console.log('[Engagement] No posts found for search:', searchQuery);
+    return { success: false, error: 'No posts found', repliedCount: 0 };
+  }
+
+  console.log('[Engagement] Found', posts.length, 'posts for', searchQuery);
+
+  let repliedCount = 0;
+  let attemptCount = 0;
+  let consecutiveFailures = 0;
+  const maxAttempts = maxResults * 2; // Maximum attempts to prevent endless loop
+  const maxConsecutiveFailures = 3;
+  const results = [];
+
+  // Engage with posts (up to maxResults)
+  for (const post of posts) {
+    if (repliedCount >= maxResults) {
+      console.log('[Engagement] Reached max replies:', maxResults);
+      break;
+    }
+    if (attemptCount >= maxAttempts) {
+      console.log('[Engagement] Reached max attempts:', maxAttempts);
+      break;
+    }
+    if (consecutiveFailures >= maxConsecutiveFailures) {
+      console.log('[Engagement] Too many consecutive failures, stopping');
+      break;
+    }
+
+    // Skip if already replied
+    if (checkReplied(post.postId)) {
+      console.log('[Engagement] Already replied to', post.postId);
+      continue;
+    }
+
+    attemptCount++;
+    console.log(`[Engagement] Attempt ${attemptCount}/${maxAttempts} for post:`, post.postId);
+
+    // Generate AI reply
+    let replyText;
+    try {
+      const hasPersona = usePersona && personaBuilder.exists();
+      const personaPrompt = hasPersona ? personaBuilder.getPromptForPlatform('twitter') : '';
+
+      const generatePrompt = `Reply to this tweet about "${searchQuery}" from @${post.author}: "${post.text}"
+
+Requirements:
+- Be relevant to the topic: ${searchQuery}
+- Add value or insight to the conversation
+- Keep it under 200 characters
+- Sound natural and authentic
+- Just return the reply text, nothing else`;
+
+      const result = await ai.generate(generatePrompt, {
+        systemPrompt: personaPrompt || 'You are a knowledgeable Twitter user who engages authentically.',
+        maxTokens: 100
+      });
+
+      console.log('[Engagement] AI result for', post.postId, ':', JSON.stringify(result).substring(0, 200));
+
+      if (!result.success) {
+        console.error('[Engagement] AI failed for post:', post.postId, result.error);
+        consecutiveFailures++;
+        continue;
+      }
+
+      replyText = result.text || result.content || '';
+      if (typeof replyText !== 'string') {
+        console.error('[Engagement] Invalid reply type for', post.postId);
+        consecutiveFailures++;
+        continue;
+      }
+      replyText = replyText.replace(/^["']|["']$/g, '').trim();
+    } catch (error) {
+      console.error('[Engagement] AI generation error for post:', post.postId, error);
+      consecutiveFailures++;
+      continue;
+    }
+
+    if (!replyText || replyText.length < 5) {
+      console.log('[Engagement] Reply too short for', post.postId, ':', replyText);
+      consecutiveFailures++;
+      continue;
+    }
+
+    // Navigate to the tweet
+    await browserView.webContents.loadURL(post.postUrl);
+    await new Promise(resolve => setTimeout(resolve, 2500));
+
+    // Click reply and send
+    const replyResult = await browserView.webContents.executeJavaScript(`
+      (async function() {
+        const replyBtn = document.querySelector('[data-testid="reply"]');
+        if (!replyBtn) {
+          return { success: false, error: 'Reply button not found' };
+        }
+        replyBtn.click();
+        await new Promise(r => setTimeout(r, 1500));
+        return { success: true };
+      })()
+    `);
+
+    if (!replyResult.success) {
+      console.log('[Engagement] Could not click reply for', post.postId);
+      consecutiveFailures++;
+      continue;
+    }
+
+    await new Promise(resolve => setTimeout(resolve, 1000));
+
+    // Focus textarea
+    const focusResult = await browserView.webContents.executeJavaScript(`
+      (async function() {
+        const selectors = [
+          '[data-testid="tweetTextarea_0"]',
+          'div[contenteditable="true"][role="textbox"]'
+        ];
+        for (const selector of selectors) {
+          const el = document.querySelector(selector);
+          if (el) {
+            el.click();
+            el.focus();
+            return { success: true };
+          }
+        }
+        return { success: false };
+      })()
+    `);
+
+    if (!focusResult.success) {
+      console.log('[Engagement] Could not focus textarea for', post.postId);
+      consecutiveFailures++;
+      continue;
+    }
+
+    await new Promise(resolve => setTimeout(resolve, 300));
+
+    // Insert text
+    await browserView.webContents.debugger.sendCommand('Input.insertText', {
+      text: replyText
+    });
+
+    await new Promise(resolve => setTimeout(resolve, 1500));
+
+    // Send reply
+    const sendResult = await browserView.webContents.executeJavaScript(`
+      (async function() {
+        await new Promise(r => setTimeout(r, 500));
+        const postBtn = document.querySelector('[data-testid="tweetButton"]');
+        if (postBtn && postBtn.getAttribute('aria-disabled') !== 'true') {
+          postBtn.click();
+          await new Promise(r => setTimeout(r, 2500));
+          const modalOpen = document.querySelector('[data-testid="tweetTextarea_0"]');
+          return { success: !modalOpen };
+        }
+        return { success: false };
+      })()
+    `);
+
+    if (sendResult.success) {
+      markReplied(post.postId);
+      repliedCount++;
+      consecutiveFailures = 0; // Reset on success
+      results.push({
+        postId: post.postId,
+        postUrl: post.postUrl,
+        reply: replyText
+      });
+      console.log('[Engagement] Successfully replied to', post.postUrl, `(${repliedCount}/${maxResults})`);
+
+      // Rate limiting between replies
+      await new Promise(resolve => setTimeout(resolve, 3000));
+    } else {
+      console.log('[Engagement] Failed to send reply for', post.postId);
+      consecutiveFailures++;
+    }
+  }
+
+  console.log(`[Engagement] Completed: ${repliedCount}/${maxResults} replies sent, ${attemptCount} attempts`);
+
+  return {
+    success: repliedCount > 0,
+    repliedCount,
+    attemptCount,
+    results
+  };
+}
+
+// Payment Popup Window
+ipcMain.handle('openPaymentPopup', async () => {
+  const paymentWindow = new BrowserWindow({
+    width: 480,
+    height: 700,
+    parent: mainWindow,
+    modal: true,
+    resizable: false,
+    webPreferences: {
+      nodeIntegration: false,
+      contextIsolation: true
+    }
+  });
+
+  const paymentHTML = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Upgrade Your Plan</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0f0f0f; color: #e0e0e0; padding: 20px; }
+    .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+    h1 { font-size: 16px; }
+    .close-btn { background: none; border: none; color: #888; font-size: 24px; cursor: pointer; padding: 4px 8px; }
+    .close-btn:hover { color: #e0e0e0; }
+
+    /* Billing Toggle */
+    .billing-toggle { display: flex; justify-content: center; gap: 8px; margin-bottom: 12px; align-items: center; }
+    .billing-btn { padding: 6px 14px; border: 1px solid #2a2a2a; border-radius: 6px; background: #1a1a1a; cursor: pointer; font-size: 11px; color: #888; }
+    .billing-btn.active { border-color: #6366f1; background: #1f1f3d; color: #e0e0e0; }
+    .billing-btn:hover { border-color: #6366f1; }
+    .save-badge { background: #22c55e; color: #000; padding: 2px 6px; border-radius: 4px; font-size: 9px; font-weight: 600; }
+
+    /* Tier Tabs */
+    .tier-tabs { display: flex; gap: 8px; margin-bottom: 12px; }
+    .tier-tab { flex: 1; padding: 8px 6px; border: 1px solid #2a2a2a; border-radius: 8px; background: #1a1a1a; cursor: pointer; text-align: center; }
+    .tier-tab:hover { border-color: #6366f1; }
+    .tier-tab.active { border-color: #6366f1; background: #1f1f3d; }
+    .tier-name { font-size: 11px; font-weight: 600; margin-bottom: 2px; }
+    .tier-price { font-size: 13px; color: #6366f1; font-weight: 600; }
+    .tier-tab.active .tier-price { color: #818cf8; }
+    .tier-save { font-size: 9px; color: #22c55e; margin-top: 2px; }
+
+    /* Features */
+    .features { background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 8px; padding: 8px 12px; margin-bottom: 10px; font-size: 10px; }
+    .features ul { list-style: none; display: grid; grid-template-columns: 1fr 1fr; gap: 2px; }
+    .features li::before { content: "✓ "; color: #22c55e; }
+
+    /* Payment sections */
+    .section { background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 8px; padding: 10px; margin-bottom: 8px; }
+    .section-title { font-size: 12px; font-weight: 600; margin-bottom: 8px; display: flex; justify-content: space-between; }
+    .fee { font-size: 9px; color: #22c55e; }
+    .label { font-size: 9px; color: #888; margin-bottom: 2px; }
+    .value-row { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
+    .value { flex: 1; font-size: 10px; background: #0f0f0f; padding: 5px 6px; border-radius: 4px; word-break: break-all; font-family: monospace; user-select: all; }
+    .copy-btn { background: #6366f1; color: white; border: none; padding: 3px 6px; border-radius: 4px; font-size: 9px; cursor: pointer; }
+    .copy-btn:hover { background: #818cf8; }
+    .copy-btn.copied { background: #22c55e; }
+
+    .note { font-size: 9px; color: #888; text-align: center; margin-top: 10px; padding-top: 8px; border-top: 1px solid #2a2a2a; }
+    .note a { color: #6366f1; }
+    .selected-amount { text-align: center; font-size: 11px; color: #f59e0b; margin-bottom: 10px; padding: 6px; background: #1a1a0a; border-radius: 4px; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>💎 Upgrade Your Plan</h1>
+    <button class="close-btn" onclick="window.close()">&times;</button>
+  </div>
+
+  <div class="billing-toggle">
+    <button class="billing-btn active" id="btn-monthly" onclick="setBilling('monthly')">Monthly</button>
+    <button class="billing-btn" id="btn-yearly" onclick="setBilling('yearly')">Yearly</button>
+    <span class="save-badge">Save up to 16%</span>
+  </div>
+
+  <div class="tier-tabs">
+    <div class="tier-tab" onclick="selectTier('starter')" id="tab-starter">
+      <div class="tier-name">Starter</div>
+      <div class="tier-price" id="price-starter">$14.99/mo</div>
+      <div class="tier-save" id="save-starter"></div>
+    </div>
+    <div class="tier-tab active" onclick="selectTier('pro')" id="tab-pro">
+      <div class="tier-name">Pro ⭐</div>
+      <div class="tier-price" id="price-pro">$49/mo</div>
+      <div class="tier-save" id="save-pro"></div>
+    </div>
+    <div class="tier-tab" onclick="selectTier('agency')" id="tab-agency">
+      <div class="tier-name">Agency</div>
+      <div class="tier-price" id="price-agency">$99/mo</div>
+      <div class="tier-save" id="save-agency"></div>
+    </div>
+  </div>
+
+  <div class="features" id="features-starter" style="display:none;">
+    <ul>
+      <li>5 posts/day</li>
+      <li>Post scheduling</li>
+      <li>3 tracked accounts</li>
+      <li>Email support</li>
+    </ul>
+  </div>
+  <div class="features" id="features-pro">
+    <ul>
+      <li>10 posts/day</li>
+      <li>Post scheduling</li>
+      <li>AI generation (50/day)</li>
+      <li>10 tracked accounts</li>
+      <li>Knowledge base</li>
+      <li>Priority support</li>
+    </ul>
+  </div>
+  <div class="features" id="features-agency" style="display:none;">
+    <ul>
+      <li>30 posts/day</li>
+      <li>Post scheduling</li>
+      <li>AI generation (200/day)</li>
+      <li>50 tracked accounts</li>
+      <li>Knowledge base</li>
+      <li>Dedicated support</li>
+    </ul>
+  </div>
+
+  <div class="selected-amount">💰 Send: <span id="amount">$49 USD</span> <span id="period">(1 month)</span></div>
+
+  <div class="section">
+    <div class="section-title">🪙 USDC/USDT <span class="fee">~0% fee</span></div>
+    <div class="label">USDT (TRC20):</div>
+    <div class="value-row">
+      <div class="value" id="usdt-addr">TJpXLr33FAK322tpdgHzxTRs4GAdUGy87M</div>
+      <button class="copy-btn" onclick="copyText('usdt-addr', this)">Copy</button>
+    </div>
+    <div class="label">USDC (Solana):</div>
+    <div class="value-row">
+      <div class="value" id="usdc-addr">9ung8ZvgFYbgMC4uj9TqkLZm6SiNsXhmbZY6VhhTaxdk</div>
+      <button class="copy-btn" onclick="copyText('usdc-addr', this)">Copy</button>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">🏦 Wise <span class="fee">~1% fee</span></div>
+    <div class="value-row">
+      <div class="value" id="wise-info">YI CHEN CHU | 573002996611255 | Routing: 084009519 | SWIFT: TRWIUS35XXX</div>
+      <button class="copy-btn" onclick="copyText('wise-info', this)">Copy</button>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">💳 PayPal <span class="fee">~4.4% fee</span></div>
+    <div class="value-row">
+      <div class="value" id="paypal-info">lman.chu@gmail.com (or @lmanchu)</div>
+      <button class="copy-btn" onclick="copyText('paypal-info', this)">Copy</button>
+    </div>
+  </div>
+
+  <div class="note">
+    After payment, send receipt to <a href="mailto:lman.chu@gmail.com">lman.chu@gmail.com</a> or DM <a href="https://twitter.com/lmanchu" target="_blank">@lmanchu</a><br>
+    Your account will be upgraded within 24 hours.
+  </div>
+
+  <script>
+    const pricing = {
+      monthly: { starter: 14.99, pro: 49, agency: 99 },
+      yearly: { starter: 170, pro: 550, agency: 1000 }
+    };
+    const savings = { starter: '$10', pro: '$38', agency: '$188' };
+
+    let currentBilling = 'monthly';
+    let currentTier = 'pro';
+
+    function setBilling(billing) {
+      currentBilling = billing;
+      document.getElementById('btn-monthly').classList.toggle('active', billing === 'monthly');
+      document.getElementById('btn-yearly').classList.toggle('active', billing === 'yearly');
+      updatePrices();
+      updateAmount();
+    }
+
+    function updatePrices() {
+      const isYearly = currentBilling === 'yearly';
+      ['starter', 'pro', 'agency'].forEach(tier => {
+        const price = pricing[currentBilling][tier];
+        const suffix = isYearly ? '/yr' : '/mo';
+        document.getElementById('price-' + tier).textContent = '$' + price + suffix;
+        document.getElementById('save-' + tier).textContent = isYearly ? 'Save ' + savings[tier] : '';
+      });
+    }
+
+    function selectTier(tier) {
+      currentTier = tier;
+      document.querySelectorAll('.tier-tab').forEach(t => t.classList.remove('active'));
+      document.getElementById('tab-' + tier).classList.add('active');
+      document.querySelectorAll('.features').forEach(f => f.style.display = 'none');
+      document.getElementById('features-' + tier).style.display = 'block';
+      updateAmount();
+    }
+
+    function updateAmount() {
+      const price = pricing[currentBilling][currentTier];
+      const period = currentBilling === 'yearly' ? '(1 year)' : '(1 month)';
+      document.getElementById('amount').textContent = '$' + price + ' USD';
+      document.getElementById('period').textContent = period;
+    }
+
+    function copyText(id, btn) {
+      const text = document.getElementById(id).textContent;
+      const textarea = document.createElement('textarea');
+      textarea.value = text;
+      textarea.style.position = 'fixed';
+      textarea.style.opacity = '0';
+      document.body.appendChild(textarea);
+      textarea.select();
+      try {
+        document.execCommand('copy');
+        btn.textContent = 'Copied!';
+        btn.classList.add('copied');
+        setTimeout(() => { btn.textContent = 'Copy'; btn.classList.remove('copied'); }, 2000);
+      } catch(e) {
+        btn.textContent = 'Select & Cmd+C';
+      }
+      document.body.removeChild(textarea);
+    }
+  </script>
+</body>
+</html>
+  `;
+
+  paymentWindow.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(paymentHTML));
+  return { success: true };
+});
 
 // App lifecycle
 app.whenReady().then(async () => {
@@ -894,6 +1758,33 @@ app.whenReady().then(async () => {
   // Initialize AI provider system
   await aiProvider.initialize();
   console.log('[Pulsar] AI provider system initialized');
+
+  // Connect AI provider to tracked accounts for auto-classification
+  trackedAccountsManager.setAIProvider(aiProvider);
+
+  // Initialize automation manager
+  automationManager.init({
+    aiProvider,
+    trackedAccountsManager,
+    scheduler,
+    onExecutePost: async (platform, content) => {
+      if (platform === 'twitter') {
+        return executeScheduledJob({ platform, content });
+      }
+      return { success: false, error: 'Platform not supported' };
+    },
+    onExecuteEngagement: async (options) => {
+      // Browser automation for engagement
+      return executeEngagementTask(options);
+    },
+    onNotify: (notification) => {
+      console.log('[Automation] Notification:', notification.title, notification.message);
+      if (mainWindow) {
+        mainWindow.webContents.send('automation-notification', notification);
+      }
+    }
+  });
+  console.log('[Pulsar] Automation system initialized');
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {

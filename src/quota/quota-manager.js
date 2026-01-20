@@ -30,11 +30,18 @@ class QuotaManager {
 
     try {
       const quota = await supabaseClient.getQuota();
+
+      // Handle null response (JWT expired, not authenticated, etc.)
+      if (!quota) {
+        console.log('[QuotaManager] Quota returned null, using defaults');
+        return this.quotaCache || this.getDefaultQuota();
+      }
+
       this.quotaCache = quota;
       this.quotaCacheTime = now;
       return quota;
     } catch (error) {
-      console.error('[QuotaManager] Failed to fetch quota:', error);
+      console.error('[QuotaManager] Failed to fetch quota:', error.message);
       // Return cached or default
       return this.quotaCache || this.getDefaultQuota();
     }
@@ -48,6 +55,22 @@ class QuotaManager {
       replies_limit: 0,
       ai_generations_used: 0,
       ai_generations_limit: 3
+    };
+  }
+
+  getDefaultTierLimit() {
+    return {
+      tier: 'free',
+      daily_posts: 3,
+      daily_replies: 0,
+      has_scheduling: false,
+      has_ai_generation: true,
+      daily_ai_generations: 3,
+      max_tracked_accounts: 0,
+      max_interest_topics: 0,
+      max_social_accounts: 1,
+      has_knowledge_base: false,
+      price_monthly_usd: 0
     };
   }
 
@@ -208,12 +231,21 @@ class QuotaManager {
     const quota = await this.getQuota();
     const limits = await this.getTierLimits();
 
-    const subscriptionInfo = supabaseClient.isAuthenticated()
-      ? await supabaseClient.getSubscriptionInfo()
-      : { subscription_tier: 'free' };
+    let subscriptionInfo = { subscription_tier: 'free' };
+    const isAuth = supabaseClient.isAuthenticated();
+    console.log('[QuotaManager] getQuotaStatus: isAuthenticated =', isAuth);
+
+    if (isAuth) {
+      const info = await supabaseClient.getSubscriptionInfo();
+      console.log('[QuotaManager] getQuotaStatus: subscriptionInfo =', JSON.stringify(info));
+      if (info) {
+        subscriptionInfo = info;
+      }
+    }
 
     const currentTier = subscriptionInfo?.subscription_tier || 'free';
-    const tierLimit = limits.find(l => l.tier === currentTier) || limits[0];
+    console.log('[QuotaManager] getQuotaStatus: currentTier =', currentTier);
+    const tierLimit = limits.find(l => l.tier === currentTier) || limits[0] || this.getDefaultTierLimit();
 
     return {
       authenticated: supabaseClient.isAuthenticated(),

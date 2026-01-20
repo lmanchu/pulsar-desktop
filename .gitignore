@@ -2,3 +2,8 @@ node_modules/
 dist/
 .DS_Store
 *.log
+
+# Sensitive configuration (use supabase-config.example.json as template)
+supabase-config.json
+.env
+.env.local

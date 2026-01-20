@@ -41,12 +41,55 @@ contextBridge.exposeInMainWorld('pulsar', {
   // Delete a scheduled job
   deleteScheduledJob: (jobId) => ipcRenderer.invoke('deleteScheduledJob', jobId),
 
+  // Update a scheduled job
+  updateScheduledJob: (jobId, updates) => ipcRenderer.invoke('updateScheduledJob', { jobId, updates }),
+
   // Clear completed jobs
   clearCompletedJobs: () => ipcRenderer.invoke('clearCompletedJobs'),
 
   // Listen for scheduler updates
   onSchedulerUpdate: (callback) => {
     ipcRenderer.on('scheduler-update', (event, jobs) => callback(jobs));
+  },
+
+  // ============================================
+  // Automation (自動化排程)
+  // ============================================
+
+  // Get all automations
+  getAutomations: () => ipcRenderer.invoke('automation:getAll'),
+
+  // Get automation statistics
+  getAutomationStats: () => ipcRenderer.invoke('automation:getStats'),
+
+  // Add a new automation
+  // type: 'recurring' | 'engagement' | 'queue'
+  addAutomation: (automation) => ipcRenderer.invoke('automation:add', automation),
+
+  // Update an automation
+  updateAutomation: (id, updates) =>
+    ipcRenderer.invoke('automation:update', { id, updates }),
+
+  // Delete an automation
+  deleteAutomation: (id) => ipcRenderer.invoke('automation:delete', id),
+
+  // Toggle automation enabled/disabled
+  toggleAutomation: (id, enabled) =>
+    ipcRenderer.invoke('automation:toggle', { id, enabled }),
+
+  // Manually trigger an automation
+  triggerAutomation: (id) => ipcRenderer.invoke('automation:trigger', id),
+
+  // Add content to a queue automation
+  addToAutomationQueue: (id, content) =>
+    ipcRenderer.invoke('automation:addToQueue', { id, content }),
+
+  // Get queue contents
+  getAutomationQueue: (id) => ipcRenderer.invoke('automation:getQueue', id),
+
+  // Listen for automation updates
+  onAutomationUpdate: (callback) => {
+    ipcRenderer.on('automation-update', (event, data) => callback(data));
   },
 
   // ============================================
@@ -238,6 +281,12 @@ contextBridge.exposeInMainWorld('pulsar', {
   // Refresh tracked accounts cache
   refreshTrackedAccounts: () => ipcRenderer.invoke('trackedAccounts:refresh'),
 
+  // Open tracked accounts config file in editor
+  openTrackedAccountsConfig: () => ipcRenderer.invoke('trackedAccounts:openConfig'),
+
+  // Get tracked accounts config file path
+  getTrackedAccountsConfigPath: () => ipcRenderer.invoke('trackedAccounts:getConfigPath'),
+
   // ============================================
   // Subscription / Payment
   // ============================================
@@ -247,6 +296,9 @@ contextBridge.exposeInMainWorld('pulsar', {
 
   // Create Stripe portal session (manage subscription)
   createPortalSession: () => ipcRenderer.invoke('subscription:createPortal'),
+
+  // Open payment popup window (manual payment before Stripe)
+  openPaymentPopup: () => ipcRenderer.invoke('openPaymentPopup'),
 
   // ============================================
   // AI Provider
