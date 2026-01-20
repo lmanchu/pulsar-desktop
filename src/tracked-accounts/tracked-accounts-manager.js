@@ -1,6 +1,8 @@
 /**
  * Tracked Accounts Manager for Pulsar Desktop
- * Markdown-based config with AI auto-classification via WebLLM
+ * Platform-specific markdown configs with AI auto-classification via WebLLM
+ *
+ * Supports separate tracked accounts for Twitter and LinkedIn
  */
 
 const { ipcMain, shell, app } = require('electron');
@@ -9,13 +11,45 @@ const fs = require('fs');
 
 class TrackedAccountsManager {
   constructor() {
-    this.mdPath = path.join(app.getPath('userData'), 'tracked-accounts.md');
-    this.cachePath = path.join(app.getPath('userData'), 'tracked-accounts-cache.json');
-    this.accountsCache = null;
-    this.cacheTime = null;
-    this.CACHE_TTL = 60000; // 1 minute
-    this.aiProvider = null; // Will be set after AIProvider is initialized
+    // Platform-specific paths
+    this.platforms = ['twitter', 'linkedin'];
+    this.mdPaths = {
+      twitter: path.join(app.getPath('userData'), 'tracked-accounts-twitter.md'),
+      linkedin: path.join(app.getPath('userData'), 'tracked-accounts-linkedin.md')
+    };
+    this.cachePaths = {
+      twitter: path.join(app.getPath('userData'), 'tracked-accounts-twitter-cache.json'),
+      linkedin: path.join(app.getPath('userData'), 'tracked-accounts-linkedin-cache.json')
+    };
+    // Legacy path for migration
+    this.legacyMdPath = path.join(app.getPath('userData'), 'tracked-accounts.md');
+    this.legacyCachePath = path.join(app.getPath('userData'), 'tracked-accounts-cache.json');
+
+    this.accountsCache = {}; // { twitter: {...}, linkedin: {...} }
+    this.cacheTime = {};     // { twitter: timestamp, linkedin: timestamp }
+    this.CACHE_TTL = 60000;  // 1 minute
+    this.aiProvider = null;
+
+    this.migrateIfNeeded();
     this.ensureConfigExists();
+  }
+
+  // Migrate from single file to platform-specific files
+  migrateIfNeeded() {
+    // If legacy file exists and Twitter file doesn't, migrate
+    if (fs.existsSync(this.legacyMdPath) && !fs.existsSync(this.mdPaths.twitter)) {
+      console.log('[TrackedAccounts] Migrating legacy config to Twitter...');
+      fs.copyFileSync(this.legacyMdPath, this.mdPaths.twitter);
+      if (fs.existsSync(this.legacyCachePath)) {
+        fs.copyFileSync(this.legacyCachePath, this.cachePaths.twitter);
+      }
+      // Rename legacy files (keep as backup)
+      fs.renameSync(this.legacyMdPath, this.legacyMdPath + '.bak');
+      if (fs.existsSync(this.legacyCachePath)) {
+        fs.renameSync(this.legacyCachePath, this.legacyCachePath + '.bak');
+      }
+      console.log('[TrackedAccounts] Migration complete');
+    }
   }
 
   // Set AI provider reference (called from main.js after AIProvider init)
@@ -23,21 +57,53 @@ class TrackedAccountsManager {
     this.aiProvider = provider;
   }
 
-  // Create default markdown config if doesn't exist
+  // Create default markdown configs for each platform if doesn't exist
   ensureConfigExists() {
-    if (!fs.existsSync(this.mdPath)) {
-      fs.writeFileSync(this.mdPath, this.getDefaultMarkdown());
-      console.log('[TrackedAccounts] Created default config at:', this.mdPath);
-    }
-    // Also ensure cache exists
-    if (!fs.existsSync(this.cachePath)) {
-      fs.writeFileSync(this.cachePath, JSON.stringify({ accounts: this.getDefaultAccounts() }, null, 2));
+    for (const platform of this.platforms) {
+      if (!fs.existsSync(this.mdPaths[platform])) {
+        fs.writeFileSync(this.mdPaths[platform], this.getDefaultMarkdown(platform));
+        console.log(`[TrackedAccounts] Created default ${platform} config at:`, this.mdPaths[platform]);
+      }
+      // Also ensure cache exists
+      if (!fs.existsSync(this.cachePaths[platform])) {
+        fs.writeFileSync(
+          this.cachePaths[platform],
+          JSON.stringify({ accounts: this.getDefaultAccounts(platform) }, null, 2)
+        );
+      }
     }
   }
 
-  // Default markdown content (multilingual)
-  getDefaultMarkdown() {
-    return `# Tracked Accounts
+  // Platform-specific default markdown content
+  getDefaultMarkdown(platform = 'twitter') {
+    if (platform === 'linkedin') {
+      return `# LinkedIn Tracked Accounts
+
+Add LinkedIn usernames or company pages below, one per line.
+AI will automatically classify tier and category.
+
+在下方新增 LinkedIn 用戶名或公司頁面，一行一個。
+AI 會自動分類層級與類別。
+
+---
+
+satlokomern
+raborgh
+jeffweiner08
+melsassak
+brianchesky
+raborgh
+alexisohanian
+stephenfry
+guykawasaki
+garyvee
+simonsinakk
+ariaborgh
+`;
+    }
+
+    // Twitter default
+    return `# Twitter/X Tracked Accounts
 
 Add Twitter/X usernames below, one per line.
 AI will automatically classify tier and category.
@@ -65,8 +131,25 @@ dan_abramov
 `;
   }
 
-  // Default accounts with pre-classified data
-  getDefaultAccounts() {
+  // Platform-specific default accounts with pre-classified data
+  getDefaultAccounts(platform = 'twitter') {
+    if (platform === 'linkedin') {
+      return [
+        { username: "satlokomern", display_name: "Satya Nadella", tier: 1, category: "tech_titan", enabled: true },
+        { username: "raborgh", display_name: "Reid Hoffman", tier: 1, category: "tech_titan", enabled: true },
+        { username: "jeffweiner08", display_name: "Jeff Weiner", tier: 2, category: "tech_leader", enabled: true },
+        { username: "melsassak", display_name: "Melanie Perkins", tier: 2, category: "founder", enabled: true },
+        { username: "brianchesky", display_name: "Brian Chesky", tier: 2, category: "founder", enabled: true },
+        { username: "alexisohanian", display_name: "Alexis Ohanian", tier: 3, category: "vc", enabled: true },
+        { username: "stephenfry", display_name: "Stephen Fry", tier: 3, category: "influencer", enabled: true },
+        { username: "guykawasaki", display_name: "Guy Kawasaki", tier: 4, category: "influencer", enabled: true },
+        { username: "garyvee", display_name: "Gary Vaynerchuk", tier: 4, category: "influencer", enabled: true },
+        { username: "simonsinakk", display_name: "Simon Sinek", tier: 5, category: "thought_leader", enabled: true },
+        { username: "ariaborgh", display_name: "Arianna Huffington", tier: 5, category: "thought_leader", enabled: true }
+      ];
+    }
+
+    // Twitter defaults
     return [
       { username: "sama", display_name: "Sam Altman", tier: 1, category: "tech_titan", enabled: true },
       { username: "elonmusk", display_name: "Elon Musk", tier: 1, category: "tech_titan", enabled: true },
@@ -87,9 +170,15 @@ dan_abramov
   }
 
   // Parse markdown file to extract usernames
-  parseMarkdown() {
+  parseMarkdown(platform = 'twitter') {
     try {
-      const content = fs.readFileSync(this.mdPath, 'utf8');
+      const mdPath = this.mdPaths[platform];
+      if (!mdPath || !fs.existsSync(mdPath)) {
+        console.log(`[TrackedAccounts] No markdown file for platform: ${platform}`);
+        return [];
+      }
+
+      const content = fs.readFileSync(mdPath, 'utf8');
       const lines = content.split('\n');
       const usernames = [];
 
@@ -97,63 +186,73 @@ dan_abramov
         const trimmed = line.trim();
         // Skip empty lines, headers, comments, and separator
         if (!trimmed || trimmed.startsWith('#') || trimmed.startsWith('---') ||
-            trimmed.includes('Add Twitter') || trimmed.includes('AI will') ||
+            trimmed.includes('Add Twitter') || trimmed.includes('Add LinkedIn') ||
+            trimmed.includes('AI will') ||
             trimmed.includes('在下方') || trimmed.includes('會自動')) {
           continue;
         }
         // Clean username (remove @ if present)
         const username = trimmed.replace(/^@/, '');
-        if (username && /^[a-zA-Z0-9_]+$/.test(username)) {
+        if (username && /^[a-zA-Z0-9_-]+$/.test(username)) {
           usernames.push(username);
         }
       }
 
       return usernames;
     } catch (error) {
-      console.error('[TrackedAccounts] Failed to parse markdown:', error.message);
+      console.error(`[TrackedAccounts] Failed to parse ${platform} markdown:`, error.message);
       return [];
     }
   }
 
-  // Load cached account data
-  loadCache() {
+  // Load cached account data for platform
+  loadCache(platform = 'twitter') {
     try {
-      if (fs.existsSync(this.cachePath)) {
-        const data = JSON.parse(fs.readFileSync(this.cachePath, 'utf8'));
+      const cachePath = this.cachePaths[platform];
+      if (cachePath && fs.existsSync(cachePath)) {
+        const data = JSON.parse(fs.readFileSync(cachePath, 'utf8'));
         return data.accounts || [];
       }
     } catch (error) {
-      console.error('[TrackedAccounts] Failed to load cache:', error.message);
+      console.error(`[TrackedAccounts] Failed to load ${platform} cache:`, error.message);
     }
-    return this.getDefaultAccounts();
+    return this.getDefaultAccounts(platform);
   }
 
-  // Save cache
-  saveCache(accounts) {
+  // Save cache for platform
+  saveCache(accounts, platform = 'twitter') {
     try {
-      fs.writeFileSync(this.cachePath, JSON.stringify({ accounts }, null, 2));
+      const cachePath = this.cachePaths[platform];
+      if (cachePath) {
+        fs.writeFileSync(cachePath, JSON.stringify({ accounts }, null, 2));
+      }
     } catch (error) {
-      console.error('[TrackedAccounts] Failed to save cache:', error.message);
+      console.error(`[TrackedAccounts] Failed to save ${platform} cache:`, error.message);
     }
   }
 
   // Classify new accounts using AI
-  async classifyAccounts(usernames) {
+  async classifyAccounts(usernames, platform = 'twitter') {
     if (!usernames.length) {
       return [];
     }
 
-    const prompt = `Classify these Twitter/X accounts into tiers and categories.
+    const platformName = platform === 'linkedin' ? 'LinkedIn' : 'Twitter/X';
+    const categoryOptions = platform === 'linkedin'
+      ? 'tech_titan, tech_leader, founder, vc, influencer, thought_leader, company, custom'
+      : 'tech_titan, ai_leader, ai_company, vc, founder, devtools, influencer, custom';
+
+    const prompt = `Classify these ${platformName} accounts into tiers and categories.
 
 Tier definitions:
-1 = Tech Titans (Elon Musk, Sam Altman level)
-2 = AI Leaders & Companies (researchers, AI companies)
+1 = Tech Titans (Satya Nadella, Sam Altman level)
+2 = Tech Leaders & Companies (executives, AI companies)
 3 = VCs & Investors
 4 = Founders & Entrepreneurs
-5 = DevTools & Technical
+5 = ${platform === 'linkedin' ? 'Thought Leaders & Speakers' : 'DevTools & Technical'}
 6 = Influencers & Content Creators
 
-Category options: tech_titan, ai_leader, ai_company, vc, founder, devtools, influencer, custom
+Category options: ${categoryOptions}
 
 Accounts to classify:
 ${usernames.join('\n')}
@@ -240,10 +339,10 @@ Return ONLY a JSON array, no explanation:
     }));
   }
 
-  // Sync markdown with cache, classify new accounts
-  async syncAccounts() {
-    const mdUsernames = this.parseMarkdown();
-    const cachedAccounts = this.loadCache();
+  // Sync markdown with cache, classify new accounts for a specific platform
+  async syncAccounts(platform = 'twitter') {
+    const mdUsernames = this.parseMarkdown(platform);
+    const cachedAccounts = this.loadCache(platform);
 
     // Build lookup map from cache
     const cacheMap = new Map();
@@ -259,8 +358,8 @@ Return ONLY a JSON array, no explanation:
     // Classify new accounts if any
     let newAccounts = [];
     if (newUsernames.length > 0) {
-      console.log('[TrackedAccounts] Classifying new accounts:', newUsernames);
-      newAccounts = await this.classifyAccounts(newUsernames);
+      console.log(`[TrackedAccounts] Classifying new ${platform} accounts:`, newUsernames);
+      newAccounts = await this.classifyAccounts(newUsernames, platform);
     }
 
     // Build final account list based on markdown order
@@ -278,38 +377,50 @@ Return ONLY a JSON array, no explanation:
     }
 
     // Save updated cache
-    this.saveCache(finalAccounts);
-    this.accountsCache = null; // Invalidate memory cache
+    this.saveCache(finalAccounts, platform);
+    this.accountsCache[platform] = null; // Invalidate memory cache for this platform
 
     return {
+      platform,
       total: finalAccounts.length,
       new: newUsernames.length,
       classified: newAccounts.length
     };
   }
 
-  // Get all tracked accounts
-  async getAccounts(forceRefresh = false) {
+  // Sync all platforms
+  async syncAllPlatforms() {
+    const results = {};
+    for (const platform of this.platforms) {
+      results[platform] = await this.syncAccounts(platform);
+    }
+    return results;
+  }
+
+  // Get all tracked accounts for a platform
+  async getAccounts(platform = 'twitter', forceRefresh = false) {
     const now = Date.now();
 
-    if (!forceRefresh && this.accountsCache && this.cacheTime &&
-        (now - this.cacheTime) < this.CACHE_TTL) {
-      return this.accountsCache;
+    if (!forceRefresh && this.accountsCache[platform] && this.cacheTime[platform] &&
+        (now - this.cacheTime[platform]) < this.CACHE_TTL) {
+      return this.accountsCache[platform];
     }
 
     // Sync markdown with cache
-    await this.syncAccounts();
+    await this.syncAccounts(platform);
 
-    const accounts = this.loadCache();
+    const accounts = this.loadCache(platform);
 
-    // Add IDs if missing
+    // Add IDs and platform if missing
     accounts.forEach((a, i) => {
-      if (!a.id) a.id = `local-${i}`;
+      if (!a.id) a.id = `${platform}-${i}`;
       if (a.enabled === undefined) a.enabled = true;
+      a.platform = platform;
     });
 
     // Group by tier for easy access
     const grouped = {
+      platform,
       all: accounts,
       byTier: {},
       byCategory: {},
@@ -330,60 +441,104 @@ Return ONLY a JSON array, no explanation:
       }
     });
 
-    this.accountsCache = grouped;
-    this.cacheTime = now;
+    this.accountsCache[platform] = grouped;
+    this.cacheTime[platform] = now;
 
     return grouped;
   }
 
-  // Get only enabled accounts
-  async getEnabledAccounts() {
-    const accounts = await this.getAccounts();
+  // Get accounts for all platforms
+  async getAllPlatformAccounts() {
+    const result = {};
+    for (const platform of this.platforms) {
+      result[platform] = await this.getAccounts(platform);
+    }
+    return result;
+  }
+
+  // Get only enabled accounts for a platform
+  async getEnabledAccounts(platform = 'twitter') {
+    const accounts = await this.getAccounts(platform);
     return accounts.all.filter(a => a.enabled !== false);
   }
 
-  // Get accounts by tier
-  async getAccountsByTier(tier) {
-    const accounts = await this.getAccounts();
+  // Get accounts by tier for a platform
+  async getAccountsByTier(tier, platform = 'twitter') {
+    const accounts = await this.getAccounts(platform);
     return accounts.byTier[tier] || [];
   }
 
-  // Get accounts by category
-  async getAccountsByCategory(category) {
-    const accounts = await this.getAccounts();
+  // Get accounts by category for a platform
+  async getAccountsByCategory(category, platform = 'twitter') {
+    const accounts = await this.getAccounts(platform);
     return accounts.byCategory[category] || [];
   }
 
-  // Search accounts
-  async searchAccounts(query) {
-    const accounts = await this.getAccounts();
+  // Search accounts across all platforms or specific platform
+  async searchAccounts(query, platform = null) {
     const lowerQuery = query.toLowerCase();
+    const results = [];
 
-    return accounts.all.filter(account =>
-      account.username.toLowerCase().includes(lowerQuery) ||
-      (account.display_name && account.display_name.toLowerCase().includes(lowerQuery))
-    );
+    const platformsToSearch = platform ? [platform] : this.platforms;
+
+    for (const p of platformsToSearch) {
+      const accounts = await this.getAccounts(p);
+      const matches = accounts.all.filter(account =>
+        account.username.toLowerCase().includes(lowerQuery) ||
+        (account.display_name && account.display_name.toLowerCase().includes(lowerQuery))
+      );
+      results.push(...matches);
+    }
+
+    return results;
   }
 
-  // Get stats
-  async getStats() {
-    const accounts = await this.getAccounts();
+  // Get stats for a platform or all platforms
+  async getStats(platform = null) {
+    if (platform) {
+      const accounts = await this.getAccounts(platform);
+      return {
+        platform,
+        total: accounts.all.length,
+        defaults: accounts.defaults.length,
+        custom: accounts.custom.length,
+        enabled: accounts.all.filter(a => a.enabled !== false).length,
+        byTier: Object.fromEntries(
+          Object.entries(accounts.byTier).map(([tier, accs]) => [tier, accs.length])
+        ),
+        categories: Object.keys(accounts.byCategory)
+      };
+    }
 
-    return {
-      total: accounts.all.length,
-      defaults: accounts.defaults.length,
-      custom: accounts.custom.length,
-      enabled: accounts.all.filter(a => a.enabled !== false).length,
-      byTier: Object.fromEntries(
-        Object.entries(accounts.byTier).map(([tier, accs]) => [tier, accs.length])
-      ),
-      categories: Object.keys(accounts.byCategory)
-    };
+    // Stats for all platforms
+    const stats = { platforms: {} };
+    let totalAll = 0;
+    let enabledAll = 0;
+
+    for (const p of this.platforms) {
+      const accounts = await this.getAccounts(p);
+      stats.platforms[p] = {
+        total: accounts.all.length,
+        defaults: accounts.defaults.length,
+        custom: accounts.custom.length,
+        enabled: accounts.all.filter(a => a.enabled !== false).length,
+        byTier: Object.fromEntries(
+          Object.entries(accounts.byTier).map(([tier, accs]) => [tier, accs.length])
+        ),
+        categories: Object.keys(accounts.byCategory)
+      };
+      totalAll += accounts.all.length;
+      enabledAll += accounts.all.filter(a => a.enabled !== false).length;
+    }
+
+    stats.totalAll = totalAll;
+    stats.enabledAll = enabledAll;
+    return stats;
   }
 
-  // Get random accounts for engagement (weighted by tier)
-  async getRandomAccountsForEngagement(count = 5) {
-    const accounts = await this.getEnabledAccounts();
+  // Get random accounts for engagement (weighted by tier) for a platform
+  async getRandomAccountsForEngagement(count = 5, platform = 'twitter') {
+    const accounts = await this.getEnabledAccounts(platform);
 
     if (accounts.length === 0) return [];
 
@@ -409,59 +564,99 @@ Return ONLY a JSON array, no explanation:
     return result;
   }
 
-  // Open markdown config in default editor
-  openConfigFile() {
-    shell.openPath(this.mdPath);
-    return { success: true, path: this.mdPath };
+  // Open markdown config in default editor for a platform
+  openConfigFile(platform = 'twitter') {
+    const mdPath = this.mdPaths[platform];
+    if (mdPath) {
+      shell.openPath(mdPath);
+      return { success: true, path: mdPath, platform };
+    }
+    return { success: false, error: `Unknown platform: ${platform}` };
   }
 
-  // Get config file path
-  getConfigPath() {
-    return this.mdPath;
+  // Get config file path for a platform
+  getConfigPath(platform = 'twitter') {
+    return this.mdPaths[platform] || null;
+  }
+
+  // Get all config paths
+  getAllConfigPaths() {
+    return { ...this.mdPaths };
   }
 
   // Initialize IPC handlers
   initIPCHandlers() {
-    ipcMain.handle('trackedAccounts:getAll', async () => {
-      return this.getAccounts();
+    // Get accounts for a platform (default: twitter)
+    ipcMain.handle('trackedAccounts:getAll', async (event, platform = 'twitter') => {
+      return this.getAccounts(platform);
     });
 
-    ipcMain.handle('trackedAccounts:getEnabled', async () => {
-      return this.getEnabledAccounts();
+    // Get accounts for all platforms
+    ipcMain.handle('trackedAccounts:getAllPlatforms', async () => {
+      return this.getAllPlatformAccounts();
     });
 
-    ipcMain.handle('trackedAccounts:getByTier', async (event, tier) => {
-      return this.getAccountsByTier(tier);
+    // Get enabled accounts for a platform
+    ipcMain.handle('trackedAccounts:getEnabled', async (event, platform = 'twitter') => {
+      return this.getEnabledAccounts(platform);
     });
 
-    ipcMain.handle('trackedAccounts:getByCategory', async (event, category) => {
-      return this.getAccountsByCategory(category);
+    // Get by tier for a platform
+    ipcMain.handle('trackedAccounts:getByTier', async (event, { tier, platform = 'twitter' }) => {
+      return this.getAccountsByTier(tier, platform);
     });
 
-    ipcMain.handle('trackedAccounts:search', async (event, query) => {
-      return this.searchAccounts(query);
+    // Get by category for a platform
+    ipcMain.handle('trackedAccounts:getByCategory', async (event, { category, platform = 'twitter' }) => {
+      return this.getAccountsByCategory(category, platform);
     });
 
-    ipcMain.handle('trackedAccounts:getStats', async () => {
-      return this.getStats();
+    // Search across platforms
+    ipcMain.handle('trackedAccounts:search', async (event, { query, platform = null }) => {
+      return this.searchAccounts(query, platform);
     });
 
-    ipcMain.handle('trackedAccounts:getRandomForEngagement', async (event, count) => {
-      return this.getRandomAccountsForEngagement(count);
+    // Get stats (platform = null for all platforms)
+    ipcMain.handle('trackedAccounts:getStats', async (event, platform = null) => {
+      return this.getStats(platform);
     });
 
-    ipcMain.handle('trackedAccounts:refresh', async () => {
-      const result = await this.syncAccounts();
-      console.log('[TrackedAccounts] Refresh result:', result);
-      return this.getAccounts(true);
+    // Get random for engagement on a platform
+    ipcMain.handle('trackedAccounts:getRandomForEngagement', async (event, { count = 5, platform = 'twitter' }) => {
+      return this.getRandomAccountsForEngagement(count, platform);
     });
 
-    ipcMain.handle('trackedAccounts:openConfig', async () => {
-      return this.openConfigFile();
+    // Refresh a specific platform or all
+    ipcMain.handle('trackedAccounts:refresh', async (event, platform = null) => {
+      if (platform) {
+        const result = await this.syncAccounts(platform);
+        console.log(`[TrackedAccounts] Refresh ${platform} result:`, result);
+        return this.getAccounts(platform, true);
+      } else {
+        const results = await this.syncAllPlatforms();
+        console.log('[TrackedAccounts] Refresh all platforms result:', results);
+        return this.getAllPlatformAccounts();
+      }
     });
 
-    ipcMain.handle('trackedAccounts:getConfigPath', async () => {
-      return this.getConfigPath();
+    // Open config for a platform
+    ipcMain.handle('trackedAccounts:openConfig', async (event, platform = 'twitter') => {
+      return this.openConfigFile(platform);
+    });
+
+    // Get config path for a platform
+    ipcMain.handle('trackedAccounts:getConfigPath', async (event, platform = 'twitter') => {
+      return this.getConfigPath(platform);
+    });
+
+    // Get all config paths
+    ipcMain.handle('trackedAccounts:getAllConfigPaths', async () => {
+      return this.getAllConfigPaths();
+    });
+
+    // Get list of supported platforms
+    ipcMain.handle('trackedAccounts:getPlatforms', async () => {
+      return this.platforms;
     });
   }
 }

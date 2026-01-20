@@ -1326,11 +1326,19 @@ Bank: Wise US Inc, Wilmington, DE</div>
 
     function setupPlatformButtons() {
       document.querySelectorAll('.platform-btn').forEach(btn => {
-        btn.addEventListener('click', () => {
+        btn.addEventListener('click', async () => {
           document.querySelectorAll('.platform-btn').forEach(b => b.classList.remove('active'));
           btn.classList.add('active');
           currentPlatform = btn.dataset.platform;
           updateCharCount();
+
+          // Navigate BrowserView to selected platform
+          const platformUrls = window.pulsar.platforms;
+          if (platformUrls[currentPlatform]) {
+            await window.pulsar.navigate(platformUrls[currentPlatform]);
+            // Update login status after navigation
+            setTimeout(() => updateLoginStatus(), 2000);
+          }
         });
       });
     }
@@ -1369,23 +1377,30 @@ Bank: Wise US Inc, Wilmington, DE</div>
           showToast('Post scheduled!', 'success');
           document.getElementById('content').value = ''; updateCharCount(); loadScheduledJobs();
         } else {
+          let result;
           if (currentPlatform === 'twitter') {
-            const result = await window.pulsar.postToTwitter(content);
-            if (result.success) {
-              showToast('Posted successfully!', 'success');
-              document.getElementById('content').value = '';
-              updateCharCount();
-              updateQuotaDisplay(); // Refresh quota after successful post
-            } else if (result.quotaExceeded) {
-              showToast('⚠️ Daily quota reached! Upgrade for more posts.', 'warning');
-              // Highlight upgrade button
-              const upgradeBtn = document.getElementById('upgrade-btn');
-              upgradeBtn.style.animation = 'pulse 0.5s ease-in-out 3';
-              setTimeout(() => upgradeBtn.style.animation = '', 1500);
-            } else {
-              showToast('Post failed: ' + (result.error || 'Unknown error'), 'error');
-            }
-          } else { showToast('Platform not yet supported', 'error'); }
+            result = await window.pulsar.postToTwitter(content);
+          } else if (currentPlatform === 'linkedin') {
+            result = await window.pulsar.postToLinkedIn(content);
+          } else {
+            showToast('Platform not yet supported', 'error');
+            return;
+          }
+
+          if (result.success) {
+            showToast('Posted successfully!', 'success');
+            document.getElementById('content').value = '';
+            updateCharCount();
+            updateQuotaDisplay(); // Refresh quota after successful post
+          } else if (result.quotaExceeded) {
+            showToast('⚠️ Daily quota reached! Upgrade for more posts.', 'warning');
+            // Highlight upgrade button
+            const upgradeBtn = document.getElementById('upgrade-btn');
+            upgradeBtn.style.animation = 'pulse 0.5s ease-in-out 3';
+            setTimeout(() => upgradeBtn.style.animation = '', 1500);
+          } else {
+            showToast('Post failed: ' + (result.error || 'Unknown error'), 'error');
+          }
         }
       } catch (error) { showToast('Error: ' + error.message, 'error'); }
       finally {

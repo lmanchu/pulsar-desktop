@@ -2,6 +2,37 @@
 
 All notable changes to Pulsar Desktop will be documented in this file.
 
+## [1.2.0] - 2026-01-20
+
+### Added
+- **LinkedIn Integration** - 完整支援 LinkedIn 發文
+  - 即時發文功能 (postToLinkedIn)
+  - 排程發文支援
+  - 登入狀態偵測（8 個 fallback selectors）
+  - 字數上限 3000 字元
+- **LinkedIn Company Page Support** - 支援公司頁面發文
+  - `postToLinkedInCompany(content, companySlug)` API
+  - 導航到 `/company/{slug}/` 後發文
+  - Company-specific selector 偵測
+  - Company Settings 儲存功能
+- **Platform-Specific Tracked Accounts** - 平台分離的追蹤帳號
+  - `tracked-accounts-twitter.md` - Twitter/X 專用追蹤清單
+  - `tracked-accounts-linkedin.md` - LinkedIn 專用追蹤清單
+  - 自動遷移舊的單一檔案到 Twitter
+  - 各平台獨立的 AI 分類與 cache
+  - 新增 API: `getAllPlatformAccounts()`, `getTrackedAccountsPlatforms()`
+
+### Fixed
+- **LinkedIn Post Modal Detection** - 修復「找不到 editor」錯誤
+  - 點擊 share-box 內部互動元素而非容器
+  - Modal 開啟驗證 + MouseEvent fallback
+  - Quill editor 多重 selector 偵測
+
+### Changed
+- `tracked-accounts-manager.js` - 重構為平台分離架構
+- `preload.js` - 所有 tracked accounts API 加入 platform 參數
+- `src/main.js` - 新增 LinkedIn posting + Company Page + scheduler 支援
+
 ## [1.1.0] - 2026-01-20
 
 ### Added

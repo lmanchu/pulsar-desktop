@@ -18,6 +18,31 @@ const aiProvider = require('./ai/ai-provider');
 // Automation System
 const automationManager = require('./automation/automation-manager');
 
+// Company Settings (stored locally)
+const fs = require('fs');
+const companySettingsPath = path.join(app.getPath('userData'), 'company-settings.json');
+
+function loadCompanySettings() {
+  try {
+    if (fs.existsSync(companySettingsPath)) {
+      return JSON.parse(fs.readFileSync(companySettingsPath, 'utf8'));
+    }
+  } catch (e) {
+    console.error('[Settings] Failed to load company settings:', e.message);
+  }
+  return { linkedin: { companySlug: '', enabled: false } };
+}
+
+function saveCompanySettings(settings) {
+  try {
+    fs.writeFileSync(companySettingsPath, JSON.stringify(settings, null, 2));
+    return { success: true };
+  } catch (e) {
+    console.error('[Settings] Failed to save company settings:', e.message);
+    return { success: false, error: e.message };
+  }
+}
+
 let mainWindow;
 let browserView;
 let browser; // Puppeteer browser instance
@@ -96,10 +121,9 @@ async function createWindow() {
     });
   });
 
-  // Open DevTools in development mode only
-  if (process.env.NODE_ENV === 'development') {
-    mainWindow.webContents.openDevTools({ mode: 'detach' });
-  }
+  // Open DevTools (temporarily enabled for testing)
+  // TODO: restore condition after testing: if (process.env.NODE_ENV === 'development')
+  mainWindow.webContents.openDevTools({ mode: 'detach' });
 
   // Add keyboard shortcut for DevTools (Cmd+Option+I on Mac)
   mainWindow.webContents.on('before-input-event', (event, input) => {
@@ -170,7 +194,17 @@ ipcMain.handle('checkLoginStatus', async (event, platform) => {
         );
       }
       if (window.location.hostname.includes('linkedin.com')) {
-        return !!document.querySelector('.feed-identity-module');
+        // LinkedIn UI updated - use multiple selectors
+        return !!(
+          document.querySelector('.feed-identity-module') ||
+          document.querySelector('.profile-card-profile-picture') ||
+          document.querySelector('[data-control-name="identity_profile_photo"]') ||
+          document.querySelector('.share-box-feed-entry__avatar') ||
+          document.querySelector('.feed-identity-module__actor-meta') ||
+          document.querySelector('img.feed-identity-module__member-photo') ||
+          document.querySelector('.global-nav__me-photo') ||
+          document.querySelector('[data-view-name="profile-card"]')
+        );
       }
       return false;
     })()
@@ -382,6 +416,735 @@ ipcMain.handle('postToTwitter', async (event, content, postToken = null) => {
     // Refund token on error
     await quotaManager.confirmPostToken(tokenToConfirm, false, null, error.message);
 
+    return { success: false, error: error.message };
+  }
+});
+
+// Post to LinkedIn using CDP for reliable text input
+// Similar pattern to Twitter but with LinkedIn-specific selectors
+ipcMain.handle('postToLinkedIn', async (event, content, postToken = null) => {
+  console.log('[Pulsar] Posting to LinkedIn:', content.substring(0, 50) + '...');
+
+  // Step 0: Verify post token (anti-hack)
+  let tokenToConfirm = postToken;
+
+  if (!tokenToConfirm) {
+    // Request token if not provided
+    const tokenResult = await quotaManager.requestPostToken('linkedin', content);
+    if (!tokenResult.success) {
+      return {
+        success: false,
+        error: tokenResult.error,
+        quotaExceeded: true
+      };
+    }
+    tokenToConfirm = tokenResult.token;
+  }
+
+  try {
+    // Navigate to LinkedIn feed with share modal active
+    await browserView.webContents.loadURL('https://www.linkedin.com/feed/');
+
+    // Wait for page to load
+    await new Promise(resolve => setTimeout(resolve, 3000));
+
+    // Step 1: Click "Start a post" button to open compose modal
+    console.log('[Pulsar] Step 1: Looking for Start a post button...');
+    const openResult = await browserView.webContents.executeJavaScript(`
+      (function() {
+        try {
+          // Strategy: Find the share-box and click the most interactive element inside
+          const shareBox = document.querySelector('.share-box-feed-entry, [class*="share-box-feed"]');
+
+          if (shareBox) {
+            // Look for the trigger button or placeholder text area inside the share box
+            const innerTrigger = shareBox.querySelector(
+              'button, ' +
+              '[role="button"], ' +
+              '.share-box-feed-entry__trigger, ' +
+              '.share-box-feed-entry__placeholder, ' +
+              '[class*="trigger"], ' +
+              '[class*="placeholder"], ' +
+              'span[dir="ltr"]'
+            );
+
+            if (innerTrigger) {
+              innerTrigger.click();
+              return { success: true, selector: 'shareBox-inner', element: innerTrigger.tagName + '.' + (innerTrigger.className || '').split(' ')[0] };
+            }
+
+            // If no inner trigger, click the share box itself
+            shareBox.click();
+            return { success: true, selector: 'shareBox-direct' };
+          }
+
+          // Fallback: try direct selectors
+          const directSelectors = [
+            '.share-box-feed-entry__trigger',
+            'button.share-box-feed-entry__trigger',
+            '[data-control-name="share.open_share_box"]',
+            'button[aria-label="Start a post"]',
+            '.share-creation-state__trigger'
+          ];
+
+          for (const sel of directSelectors) {
+            const el = document.querySelector(sel);
+            if (el) {
+              el.click();
+              return { success: true, selector: sel };
+            }
+          }
+
+          // Last resort: find by "Start a post" text
+          const allClickables = document.querySelectorAll('button, [role="button"], [tabindex="0"], span, div');
+          for (const el of allClickables) {
+            if (el.textContent?.includes('Start a post')) {
+              el.click();
+              return { success: true, selector: 'text-match', element: el.tagName };
+            }
+          }
+
+          return { success: false, error: 'Could not find Start a post element' };
+        } catch (e) {
+          return { success: false, error: e.message };
+        }
+      })()
+    `);
+    console.log('[Pulsar] Step 1 result:', JSON.stringify(openResult));
+
+    // If click succeeded, wait longer for modal animation
+    if (openResult.success) {
+      await new Promise(resolve => setTimeout(resolve, 1500));
+
+      // Verify modal opened, if not try clicking again or a different element
+      const modalCheck = await browserView.webContents.executeJavaScript(`
+        (function() {
+          const modal = document.querySelector('.artdeco-modal, [role="dialog"], .share-creation-state');
+          const contentEditable = document.querySelector('[contenteditable="true"]');
+          return { hasModal: !!modal, hasEditor: !!contentEditable };
+        })()
+      `);
+      console.log('[Pulsar] Modal check after click:', JSON.stringify(modalCheck));
+
+      if (!modalCheck.hasModal && !modalCheck.hasEditor) {
+        console.log('[Pulsar] Modal did not open, trying alternative click...');
+        // Try clicking "Start a post" text directly with a simulated mouse event
+        await browserView.webContents.executeJavaScript(`
+          (function() {
+            const shareBox = document.querySelector('.share-box-feed-entry, [class*="share-box-feed"]');
+            if (shareBox) {
+              // Dispatch a proper mouse event
+              const evt = new MouseEvent('click', { bubbles: true, cancelable: true, view: window });
+              shareBox.dispatchEvent(evt);
+            }
+          })()
+        `);
+        await new Promise(resolve => setTimeout(resolve, 1500));
+      }
+    }
+
+    if (!openResult.success) {
+      await quotaManager.confirmPostToken(tokenToConfirm, false, null, openResult.error);
+      return openResult;
+    }
+
+    // Wait for compose modal to open
+    await new Promise(resolve => setTimeout(resolve, 2000));
+
+    // Step 2: Focus on the text editor
+    console.log('[Pulsar] Step 2: Looking for editor...');
+    const focusResult = await browserView.webContents.executeJavaScript(`
+      (function() {
+        try {
+          // LinkedIn uses various editor implementations
+          const editorSelectors = [
+            '.ql-editor',
+            '[data-placeholder="What do you want to talk about?"]',
+            '.share-creation-state__text-editor .ql-editor',
+            '.editor-content[contenteditable="true"]',
+            '[role="textbox"][contenteditable="true"]',
+            '.share-box-v2__modal-content .ql-editor',
+            '.share-creation-state__editor .ql-editor',
+            '[data-test-richtexteditor]',
+            '.share-box__editor .ql-editor',
+            'div[contenteditable="true"][aria-label*="post"]',
+            '.artdeco-modal [contenteditable="true"]',
+            '[aria-label="Text editor for creating content"]',
+            // More aggressive patterns
+            '[contenteditable="true"]',
+            '.ql-container .ql-editor'
+          ];
+
+          let editor = null;
+          let foundSelector = '';
+
+          for (const selector of editorSelectors) {
+            editor = document.querySelector(selector);
+            if (editor) {
+              foundSelector = selector;
+              break;
+            }
+          }
+
+          // Fallback: find any contenteditable in modal
+          if (!editor) {
+            const modal = document.querySelector('.artdeco-modal, [role="dialog"], [class*="modal"]');
+            if (modal) {
+              editor = modal.querySelector('[contenteditable="true"]');
+              if (editor) foundSelector = 'modal-contenteditable';
+            }
+          }
+
+          if (!editor) {
+            // Debug: check what modals/dialogs exist
+            const modals = document.querySelectorAll('[role="dialog"], [class*="modal"], .artdeco-modal');
+            const contentEditables = document.querySelectorAll('[contenteditable="true"]');
+            return {
+              success: false,
+              error: 'Editor not found',
+              debug: {
+                modals: modals.length,
+                contentEditables: contentEditables.length,
+                modalClasses: Array.from(modals).slice(0,3).map(m => m.className?.split(' ')[0])
+              }
+            };
+          }
+
+          editor.click();
+          editor.focus();
+
+          // Ensure cursor is in the editor
+          try {
+            const selection = window.getSelection();
+            const range = document.createRange();
+            range.selectNodeContents(editor);
+            range.collapse(false);
+            selection.removeAllRanges();
+            selection.addRange(range);
+          } catch(e) {}
+
+          return { success: true, selector: foundSelector };
+        } catch (e) {
+          return { success: false, error: e.message };
+        }
+      })()
+    `);
+    console.log('[Pulsar] Step 2 result:', JSON.stringify(focusResult));
+
+    if (!focusResult.success) {
+      await quotaManager.confirmPostToken(tokenToConfirm, false, null, focusResult.error);
+      return focusResult;
+    }
+
+    await new Promise(resolve => setTimeout(resolve, 300));
+
+    // Step 3: Use CDP Input.insertText for reliable text input
+    console.log('[Pulsar] Using CDP to insert text into LinkedIn...');
+    await browserView.webContents.debugger.sendCommand('Input.insertText', {
+      text: content
+    });
+
+    // Wait for editor to update
+    await new Promise(resolve => setTimeout(resolve, 1500));
+
+    // Step 4: Click the Post button
+    const postResult = await browserView.webContents.executeJavaScript(`
+      (async function() {
+        await new Promise(r => setTimeout(r, 500));
+
+        // Verify text was inserted
+        const editorSelectors = [
+          '.ql-editor',
+          '[data-placeholder="What do you want to talk about?"]',
+          '.editor-content[contenteditable="true"]',
+          '[contenteditable="true"][role="textbox"]',
+          '.artdeco-modal [contenteditable="true"]'
+        ];
+
+        let editor = null;
+        for (const selector of editorSelectors) {
+          editor = document.querySelector(selector);
+          if (editor && editor.textContent.trim().length > 0) {
+            console.log('[Pulsar] Found text in:', selector);
+            break;
+          }
+        }
+
+        // Fallback: find in modal
+        if (!editor || editor.textContent.trim().length === 0) {
+          const modal = document.querySelector('.artdeco-modal, [role="dialog"]');
+          if (modal) {
+            const modalEditor = modal.querySelector('[contenteditable="true"]');
+            if (modalEditor && modalEditor.textContent.trim().length > 0) {
+              editor = modalEditor;
+              console.log('[Pulsar] Found text in modal editor');
+            }
+          }
+        }
+
+        const textContent = editor?.textContent?.trim() || '';
+        console.log('[Pulsar] LinkedIn text content found:', textContent.substring(0, 50));
+
+        if (textContent.length === 0) {
+          return { success: false, error: 'No text detected in editor' };
+        }
+
+        // Find the Post button - LinkedIn UI changes frequently
+        const postBtnSelectors = [
+          '.share-actions__primary-action',
+          'button.share-actions__primary-action',
+          '[data-control-name="share.post"]',
+          'button[aria-label="Post"]',
+          '.share-box-v2__submit-button',
+          'button.artdeco-button--primary[type="submit"]',
+          // Additional selectors
+          '.share-creation-state__footer button.artdeco-button--primary',
+          '.artdeco-modal button.artdeco-button--primary',
+          '[data-test-modal-footer] button.artdeco-button--primary'
+        ];
+
+        let postBtn = null;
+        for (const selector of postBtnSelectors) {
+          const btn = document.querySelector(selector);
+          if (btn) {
+            console.log('[Pulsar] Found post button:', selector, btn.textContent);
+            postBtn = btn;
+            break;
+          }
+        }
+
+        if (!postBtn) {
+          // Try finding by button text in modal
+          const modal = document.querySelector('.artdeco-modal, [role="dialog"]');
+          const buttonsToCheck = modal ? modal.querySelectorAll('button') : document.querySelectorAll('button');
+          for (const btn of buttonsToCheck) {
+            const text = btn.textContent.trim().toLowerCase();
+            if (text === 'post' || text === 'share') {
+              postBtn = btn;
+              console.log('[Pulsar] Found post button by text:', text);
+              break;
+            }
+          }
+        }
+
+        if (!postBtn) {
+          return { success: false, error: 'Post button not found' };
+        }
+
+        // Check if button is disabled
+        const isDisabled = postBtn.disabled || postBtn.getAttribute('aria-disabled') === 'true';
+        console.log('[Pulsar] Post button disabled:', isDisabled);
+
+        if (isDisabled) {
+          return { success: false, error: 'Post button is disabled' };
+        }
+
+        // Click the post button
+        console.log('[Pulsar] Clicking LinkedIn post button...');
+        postBtn.click();
+
+        // Wait for post to complete
+        await new Promise(r => setTimeout(r, 3000));
+
+        // Check if modal closed (indicating success)
+        const modalStillOpen = document.querySelector('.share-box-v2__modal-content') ||
+                              document.querySelector('.share-creation-state');
+        if (!modalStillOpen) {
+          console.log('[Pulsar] LinkedIn compose modal closed - post likely succeeded');
+          return { success: true };
+        }
+
+        // Check for success toast
+        const successToast = document.querySelector('.artdeco-toast-item--visible');
+        if (successToast && successToast.textContent.toLowerCase().includes('post')) {
+          console.log('[Pulsar] Found success toast');
+          return { success: true };
+        }
+
+        return { success: true, note: 'Post button clicked, verify manually' };
+      })()
+    `);
+
+    // Confirm token usage based on result
+    await quotaManager.confirmPostToken(
+      tokenToConfirm,
+      postResult.success,
+      null,
+      postResult.success ? null : postResult.error
+    );
+
+    return postResult;
+  } catch (error) {
+    console.error('[Pulsar] LinkedIn post failed:', error);
+
+    // Refund token on error
+    await quotaManager.confirmPostToken(tokenToConfirm, false, null, error.message);
+
+    return { success: false, error: error.message };
+  }
+});
+
+// ============================================
+// LinkedIn Company Page Posting
+// ============================================
+ipcMain.handle('postToLinkedInCompany', async (event, { content, companySlug }) => {
+  console.log(`[Pulsar] Posting to LinkedIn Company Page: ${companySlug}`);
+  console.log('[Pulsar] Content:', content.substring(0, 50) + '...');
+
+  // Step 0: Verify post token (anti-hack)
+  const tokenResult = await quotaManager.requestPostToken('linkedin_company', content);
+  if (!tokenResult.success) {
+    return {
+      success: false,
+      error: tokenResult.error,
+      quotaExceeded: true
+    };
+  }
+  const tokenToConfirm = tokenResult.token;
+
+  try {
+    // Navigate to Company Page
+    const companyUrl = `https://www.linkedin.com/company/${companySlug}/`;
+    console.log('[Pulsar] Navigating to Company Page:', companyUrl);
+    await browserView.webContents.loadURL(companyUrl);
+
+    // Wait for page to load
+    await new Promise(resolve => setTimeout(resolve, 3000));
+
+    // Step 1: Click "Create" button on Company Page to open dropdown
+    console.log('[Pulsar] Step 1: Looking for Create button...');
+    const createResult = await browserView.webContents.executeJavaScript(`
+      (function() {
+        try {
+          // Find the Create button (usually a green/primary button)
+          const createSelectors = [
+            'button[aria-label="Create"]',
+            '.org-page-navigation__create-btn',
+            'button.artdeco-button--primary',
+            '[data-control-name="org_admin_create"]'
+          ];
+
+          for (const selector of createSelectors) {
+            const el = document.querySelector(selector);
+            if (el && el.textContent?.toLowerCase().includes('create')) {
+              el.click();
+              return { success: true, selector: selector, text: el.textContent.trim() };
+            }
+          }
+
+          // Fallback: find by text "Create"
+          const buttons = document.querySelectorAll('button');
+          for (const btn of buttons) {
+            if (btn.textContent?.trim().toLowerCase() === 'create') {
+              btn.click();
+              return { success: true, selector: 'text-match', text: btn.textContent.trim() };
+            }
+          }
+
+          return { success: false, error: 'Create button not found' };
+        } catch (e) {
+          return { success: false, error: e.message };
+        }
+      })()
+    `);
+    console.log('[Pulsar] Step 1 (Create button) result:', JSON.stringify(createResult));
+
+    if (!createResult.success) {
+      await quotaManager.confirmPostToken(tokenToConfirm, false, null, createResult.error);
+      return createResult;
+    }
+
+    // Wait for dropdown menu to appear
+    await new Promise(resolve => setTimeout(resolve, 1000));
+
+    // Step 1b: Click "Start a post" in the Create dialog/dropdown
+    console.log('[Pulsar] Step 1b: Looking for "Start a post" in Create dialog...');
+
+    // Get the position of "Start a post" element for precise clicking
+    const startPostInfo = await browserView.webContents.executeJavaScript(`
+      (function() {
+        try {
+          // Company Page uses a modal dialog instead of dropdown
+          // Look for modal/dialog first
+          const createDialog = document.querySelector('.artdeco-modal, [role="dialog"], .share-actions-modal');
+          const searchContainer = createDialog || document;
+
+          // Strategy 1: Find by text content - search ALL clickable elements
+          const allClickables = searchContainer.querySelectorAll('li, button, a, div[role="button"], span[role="button"], [tabindex="0"]');
+          for (const item of allClickables) {
+            const text = item.textContent?.toLowerCase() || '';
+            if (text.includes('start a post') && !text.includes('create an event')) {
+              const rect = item.getBoundingClientRect();
+              if (rect.width > 0 && rect.height > 0) {
+                return {
+                  found: true,
+                  x: rect.x + rect.width / 2,
+                  y: rect.y + rect.height / 2,
+                  text: item.textContent.trim().substring(0, 80),
+                  strategy: 'text-match'
+                };
+              }
+            }
+          }
+
+          // Strategy 2: Find dropdown items (traditional dropdown)
+          const dropdownItems = searchContainer.querySelectorAll('.artdeco-dropdown__item, [role="menuitem"], li[role="option"]');
+          for (const item of dropdownItems) {
+            if (item.textContent?.toLowerCase().includes('start a post')) {
+              const rect = item.getBoundingClientRect();
+              return {
+                found: true,
+                x: rect.x + rect.width / 2,
+                y: rect.y + rect.height / 2,
+                text: item.textContent.trim().substring(0, 50),
+                strategy: 'dropdown-item'
+              };
+            }
+          }
+
+          // Strategy 3: Find by first item in Create menu (usually Start a post)
+          const dropdown = searchContainer.querySelector('.artdeco-dropdown__content, [role="menu"], .share-actions-modal__content');
+          if (dropdown) {
+            const firstItem = dropdown.querySelector('li, [role="menuitem"], button');
+            if (firstItem) {
+              const rect = firstItem.getBoundingClientRect();
+              return {
+                found: true,
+                x: rect.x + rect.width / 2,
+                y: rect.y + rect.height / 2,
+                text: firstItem.textContent.trim().substring(0, 50),
+                strategy: 'first-item-fallback'
+              };
+            }
+          }
+
+          // Debug: list what elements exist in the modal
+          const debugInfo = {
+            hasDialog: !!createDialog,
+            clickableCount: allClickables.length,
+            firstFewTexts: Array.from(allClickables).slice(0, 5).map(el => el.textContent?.trim().substring(0, 30))
+          };
+
+          return { found: false, debug: debugInfo };
+        } catch (e) {
+          return { found: false, error: e.message };
+        }
+      })()
+    `);
+    console.log('[Pulsar] Start a post element info:', JSON.stringify(startPostInfo));
+
+    if (!startPostInfo.found) {
+      const error = '"Start a post" option not found in dropdown';
+      await quotaManager.confirmPostToken(tokenToConfirm, false, null, error);
+      return { success: false, error };
+    }
+
+    // Use CDP to perform a real mouse click at the element position
+    console.log('[Pulsar] Clicking "Start a post" at:', startPostInfo.x, startPostInfo.y);
+    await browserView.webContents.debugger.sendCommand('Input.dispatchMouseEvent', {
+      type: 'mousePressed',
+      x: startPostInfo.x,
+      y: startPostInfo.y,
+      button: 'left',
+      clickCount: 1
+    });
+    await browserView.webContents.debugger.sendCommand('Input.dispatchMouseEvent', {
+      type: 'mouseReleased',
+      x: startPostInfo.x,
+      y: startPostInfo.y,
+      button: 'left',
+      clickCount: 1
+    });
+
+    console.log('[Pulsar] Step 1b: CDP click dispatched');
+
+    // Wait for modal to open (Company Page modal loads slower)
+    await new Promise(resolve => setTimeout(resolve, 3000));
+
+    // Wait for editor to appear with retry
+    console.log('[Pulsar] Step 2: Waiting for editor in modal...');
+    let focusResult = { success: false, error: 'Editor not found after retries' };
+
+    for (let retry = 0; retry < 5; retry++) {
+      const checkResult = await browserView.webContents.executeJavaScript(`
+        (function() {
+          try {
+            // Company Page modal editor selectors
+            const editorSelectors = [
+              '.ql-editor',
+              '.share-creation-state__text-editor .ql-editor',
+              '[contenteditable="true"][role="textbox"]',
+              '[contenteditable="true"][data-placeholder]',
+              '.artdeco-modal [contenteditable="true"]',
+              '[role="dialog"] [contenteditable="true"]',
+              '.share-box-v2__modal-content .ql-editor',
+              '[aria-label="Text editor for creating content"]',
+              // More generic
+              '[contenteditable="true"]'
+            ];
+
+            let editor = null;
+            let foundSelector = '';
+
+            for (const selector of editorSelectors) {
+              const els = document.querySelectorAll(selector);
+              for (const el of els) {
+                // Make sure it's visible and in a modal
+                if (el.offsetParent !== null) {
+                  editor = el;
+                  foundSelector = selector;
+                  break;
+                }
+              }
+              if (editor) break;
+            }
+
+            // Fallback: find any contenteditable in modal
+            if (!editor) {
+              const modal = document.querySelector('.artdeco-modal, [role="dialog"], .share-creation-state');
+              if (modal) {
+                const ce = modal.querySelector('[contenteditable="true"]');
+                if (ce && ce.offsetParent !== null) {
+                  editor = ce;
+                  foundSelector = 'modal-contenteditable';
+                }
+              }
+            }
+
+            if (!editor) {
+              // Debug info
+              const modals = document.querySelectorAll('.artdeco-modal, [role="dialog"]');
+              const allCE = document.querySelectorAll('[contenteditable="true"]');
+              return {
+                success: false,
+                retry: true,
+                debug: { modals: modals.length, contentEditables: allCE.length }
+              };
+            }
+
+            editor.click();
+            editor.focus();
+
+            // Place cursor
+            try {
+              const selection = window.getSelection();
+              const range = document.createRange();
+              range.selectNodeContents(editor);
+              range.collapse(false);
+              selection.removeAllRanges();
+              selection.addRange(range);
+            } catch(e) {}
+
+            return { success: true, selector: foundSelector };
+          } catch (e) {
+            return { success: false, error: e.message };
+          }
+        })()
+      `);
+
+      console.log('[Pulsar] Step 2 attempt ' + (retry + 1) + ':', JSON.stringify(checkResult));
+
+      if (checkResult.success) {
+        focusResult = checkResult;
+        break;
+      }
+
+      if (!checkResult.retry) {
+        focusResult = checkResult;
+        break;
+      }
+
+      // Wait and retry
+      await new Promise(resolve => setTimeout(resolve, 1000));
+    }
+
+    console.log('[Pulsar] Step 2 final result:', JSON.stringify(focusResult));
+
+    if (!focusResult.success) {
+      await quotaManager.confirmPostToken(tokenToConfirm, false, null, focusResult.error);
+      return focusResult;
+    }
+
+    await new Promise(resolve => setTimeout(resolve, 300));
+
+    // Step 3: Use CDP Input.insertText for reliable text input
+    console.log('[Pulsar] Using CDP to insert text...');
+    await browserView.webContents.debugger.sendCommand('Input.insertText', {
+      text: content
+    });
+
+    await new Promise(resolve => setTimeout(resolve, 1500));
+
+    // Step 4: Click the Post button
+    const postResult = await browserView.webContents.executeJavaScript(`
+      (async function() {
+        await new Promise(r => setTimeout(r, 500));
+
+        // Find the Post button
+        const postBtnSelectors = [
+          '.share-actions__primary-action',
+          'button.share-actions__primary-action',
+          'button[aria-label="Post"]',
+          '.artdeco-modal button.artdeco-button--primary',
+          '[data-control-name="share.post"]'
+        ];
+
+        let postBtn = null;
+        for (const selector of postBtnSelectors) {
+          const btn = document.querySelector(selector);
+          if (btn) {
+            postBtn = btn;
+            break;
+          }
+        }
+
+        // Fallback: find by text
+        if (!postBtn) {
+          const modal = document.querySelector('.artdeco-modal, [role="dialog"]');
+          const buttons = modal ? modal.querySelectorAll('button') : document.querySelectorAll('button');
+          for (const btn of buttons) {
+            const text = btn.textContent.trim().toLowerCase();
+            if (text === 'post' || text === 'share') {
+              postBtn = btn;
+              break;
+            }
+          }
+        }
+
+        if (!postBtn) {
+          return { success: false, error: 'Post button not found' };
+        }
+
+        const isDisabled = postBtn.disabled || postBtn.getAttribute('aria-disabled') === 'true';
+        if (isDisabled) {
+          return { success: false, error: 'Post button is disabled' };
+        }
+
+        postBtn.click();
+        await new Promise(r => setTimeout(r, 3000));
+
+        // Check if modal closed
+        const modalStillOpen = document.querySelector('.share-creation-state');
+        if (!modalStillOpen) {
+          return { success: true };
+        }
+
+        return { success: true, note: 'Post button clicked, verify manually' };
+      })()
+    `);
+
+    // Confirm token usage
+    await quotaManager.confirmPostToken(
+      tokenToConfirm,
+      postResult.success,
+      null,
+      postResult.success ? null : postResult.error
+    );
+
+    return postResult;
+  } catch (error) {
+    console.error('[Pulsar] LinkedIn Company post failed:', error);
+    await quotaManager.confirmPostToken(tokenToConfirm, false, null, error.message);
     return { success: false, error: error.message };
   }
 });
@@ -672,6 +1435,18 @@ ipcMain.handle('parsePDFContent', async (event, uint8Array) => {
     console.error('[Pulsar] PDF parse error:', err);
     throw new Error('Failed to parse PDF: ' + err.message);
   }
+});
+
+// ============================================
+// Company Settings
+// ============================================
+
+ipcMain.handle('settings:getCompany', async () => {
+  return loadCompanySettings();
+});
+
+ipcMain.handle('settings:setCompany', async (event, settings) => {
+  return saveCompanySettings(settings);
 });
 
 // ============================================
@@ -1000,6 +1775,105 @@ async function executeScheduledJob(job) {
       return result;
     } catch (error) {
       // Refund token on error
+      await quotaManager.confirmPostToken(postToken, false, null, error.message);
+      return { success: false, error: error.message };
+    }
+  }
+
+  if (job.platform === 'linkedin') {
+    try {
+      // Navigate to LinkedIn feed
+      await browserView.webContents.loadURL('https://www.linkedin.com/feed/');
+      await new Promise(resolve => setTimeout(resolve, 3000));
+
+      // Click "Start a post" button
+      const openResult = await browserView.webContents.executeJavaScript(`
+        (function() {
+          try {
+            const shareBox = document.querySelector('.share-box-feed-entry, [class*="share-box-feed"]');
+            if (shareBox) {
+              const innerTrigger = shareBox.querySelector('button, [role="button"], .share-box-feed-entry__trigger');
+              if (innerTrigger) {
+                innerTrigger.click();
+                return { success: true };
+              }
+              shareBox.click();
+              return { success: true };
+            }
+            return { success: false, error: 'Share box not found' };
+          } catch (e) {
+            return { success: false, error: e.message };
+          }
+        })()
+      `);
+
+      if (!openResult.success) {
+        await quotaManager.confirmPostToken(postToken, false, null, openResult.error);
+        return openResult;
+      }
+
+      await new Promise(resolve => setTimeout(resolve, 2000));
+
+      // Focus editor
+      const focusResult = await browserView.webContents.executeJavaScript(`
+        (function() {
+          try {
+            const editor = document.querySelector('.ql-editor, [contenteditable="true"]');
+            if (editor) {
+              editor.click();
+              editor.focus();
+              return { success: true };
+            }
+            return { success: false, error: 'Editor not found' };
+          } catch (e) {
+            return { success: false, error: e.message };
+          }
+        })()
+      `);
+
+      if (!focusResult.success) {
+        await quotaManager.confirmPostToken(postToken, false, null, focusResult.error);
+        return focusResult;
+      }
+
+      await new Promise(resolve => setTimeout(resolve, 300));
+
+      // Insert text via CDP
+      await browserView.webContents.debugger.sendCommand('Input.insertText', {
+        text: job.content
+      });
+
+      await new Promise(resolve => setTimeout(resolve, 1500));
+
+      // Click Post button
+      const result = await browserView.webContents.executeJavaScript(`
+        (async function() {
+          await new Promise(r => setTimeout(r, 500));
+          // Find Post button
+          let postBtn = document.querySelector('.share-actions__primary-action, button[aria-label="Post"]');
+          if (!postBtn) {
+            const buttons = document.querySelectorAll('button');
+            for (const btn of buttons) {
+              if (btn.textContent.trim().toLowerCase() === 'post') {
+                postBtn = btn;
+                break;
+              }
+            }
+          }
+          if (postBtn && !postBtn.disabled) {
+            postBtn.click();
+            await new Promise(r => setTimeout(r, 3000));
+            return { success: true };
+          }
+          return { success: false, error: 'Post button not clickable' };
+        })()
+      `);
+
+      // Confirm token usage
+      await quotaManager.confirmPostToken(postToken, result.success, null, result.success ? null : result.error);
+
+      return result;
+    } catch (error) {
       await quotaManager.confirmPostToken(postToken, false, null, error.message);
       return { success: false, error: error.message };
     }

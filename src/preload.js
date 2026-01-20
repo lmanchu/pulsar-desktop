@@ -13,16 +13,28 @@ contextBridge.exposeInMainWorld('pulsar', {
   // Twitter actions
   postToTwitter: (content) => ipcRenderer.invoke('postToTwitter', content),
 
+  // LinkedIn actions
+  postToLinkedIn: (content) => ipcRenderer.invoke('postToLinkedIn', content),
+
   // Debugging
   getPageContent: () => ipcRenderer.invoke('getPageContent'),
 
-  // Platform shortcuts
+  // Platform shortcuts (支援個人 & 公司帳號)
   platforms: {
     twitter: 'https://x.com',
     linkedin: 'https://www.linkedin.com',
+    linkedin_company: 'https://www.linkedin.com/company/', // + company slug
     threads: 'https://www.threads.net',
     instagram: 'https://www.instagram.com'
   },
+
+  // Post to LinkedIn Company Page
+  postToLinkedInCompany: (content, companySlug) =>
+    ipcRenderer.invoke('postToLinkedInCompany', { content, companySlug }),
+
+  // Get/Set company settings
+  getCompanySettings: () => ipcRenderer.invoke('settings:getCompany'),
+  setCompanySettings: (settings) => ipcRenderer.invoke('settings:setCompany', settings),
 
   // ============================================
   // Scheduler
@@ -242,50 +254,67 @@ contextBridge.exposeInMainWorld('pulsar', {
   refreshQuota: () => ipcRenderer.invoke('quota:refresh'),
 
   // ============================================
-  // Tracked Accounts
+  // Tracked Accounts (Platform-Specific)
   // ============================================
 
-  // Get all tracked accounts (defaults + custom)
-  getTrackedAccounts: () => ipcRenderer.invoke('trackedAccounts:getAll'),
+  // Get all tracked accounts for a platform (default: twitter)
+  getTrackedAccounts: (platform = 'twitter') =>
+    ipcRenderer.invoke('trackedAccounts:getAll', platform),
 
-  // Get only enabled tracked accounts
-  getEnabledTrackedAccounts: () => ipcRenderer.invoke('trackedAccounts:getEnabled'),
+  // Get all tracked accounts for all platforms
+  getAllPlatformAccounts: () => ipcRenderer.invoke('trackedAccounts:getAllPlatforms'),
 
-  // Get tracked accounts by tier (1-6)
-  getTrackedAccountsByTier: (tier) => ipcRenderer.invoke('trackedAccounts:getByTier', tier),
+  // Get only enabled tracked accounts for a platform
+  getEnabledTrackedAccounts: (platform = 'twitter') =>
+    ipcRenderer.invoke('trackedAccounts:getEnabled', platform),
 
-  // Get tracked accounts by category
-  getTrackedAccountsByCategory: (category) =>
-    ipcRenderer.invoke('trackedAccounts:getByCategory', category),
+  // Get tracked accounts by tier for a platform
+  getTrackedAccountsByTier: (tier, platform = 'twitter') =>
+    ipcRenderer.invoke('trackedAccounts:getByTier', { tier, platform }),
 
-  // Search tracked accounts
-  searchTrackedAccounts: (query) => ipcRenderer.invoke('trackedAccounts:search', query),
+  // Get tracked accounts by category for a platform
+  getTrackedAccountsByCategory: (category, platform = 'twitter') =>
+    ipcRenderer.invoke('trackedAccounts:getByCategory', { category, platform }),
 
-  // Add custom tracked account (Pro only)
+  // Search tracked accounts (platform = null for all)
+  searchTrackedAccounts: (query, platform = null) =>
+    ipcRenderer.invoke('trackedAccounts:search', { query, platform }),
+
+  // Add custom tracked account (Pro only) - TODO: implement per platform
   addTrackedAccount: (accountData) => ipcRenderer.invoke('trackedAccounts:add', accountData),
 
-  // Remove tracked account
+  // Remove tracked account - TODO: implement per platform
   removeTrackedAccount: (accountId) => ipcRenderer.invoke('trackedAccounts:remove', accountId),
 
-  // Toggle tracked account enabled/disabled
+  // Toggle tracked account enabled/disabled - TODO: implement per platform
   toggleTrackedAccount: (accountId, enabled) =>
     ipcRenderer.invoke('trackedAccounts:toggle', { accountId, enabled }),
 
-  // Get tracked accounts stats
-  getTrackedAccountsStats: () => ipcRenderer.invoke('trackedAccounts:getStats'),
+  // Get tracked accounts stats (platform = null for all)
+  getTrackedAccountsStats: (platform = null) =>
+    ipcRenderer.invoke('trackedAccounts:getStats', platform),
 
-  // Get random accounts for engagement (weighted by tier)
-  getRandomAccountsForEngagement: (count = 5) =>
-    ipcRenderer.invoke('trackedAccounts:getRandomForEngagement', count),
+  // Get random accounts for engagement for a platform
+  getRandomAccountsForEngagement: (count = 5, platform = 'twitter') =>
+    ipcRenderer.invoke('trackedAccounts:getRandomForEngagement', { count, platform }),
 
-  // Refresh tracked accounts cache
-  refreshTrackedAccounts: () => ipcRenderer.invoke('trackedAccounts:refresh'),
+  // Refresh tracked accounts (platform = null for all)
+  refreshTrackedAccounts: (platform = null) =>
+    ipcRenderer.invoke('trackedAccounts:refresh', platform),
 
-  // Open tracked accounts config file in editor
-  openTrackedAccountsConfig: () => ipcRenderer.invoke('trackedAccounts:openConfig'),
+  // Open tracked accounts config file in editor for a platform
+  openTrackedAccountsConfig: (platform = 'twitter') =>
+    ipcRenderer.invoke('trackedAccounts:openConfig', platform),
 
-  // Get tracked accounts config file path
-  getTrackedAccountsConfigPath: () => ipcRenderer.invoke('trackedAccounts:getConfigPath'),
+  // Get tracked accounts config file path for a platform
+  getTrackedAccountsConfigPath: (platform = 'twitter') =>
+    ipcRenderer.invoke('trackedAccounts:getConfigPath', platform),
+
+  // Get all config paths
+  getAllTrackedAccountsConfigPaths: () => ipcRenderer.invoke('trackedAccounts:getAllConfigPaths'),
+
+  // Get list of supported platforms
+  getTrackedAccountsPlatforms: () => ipcRenderer.invoke('trackedAccounts:getPlatforms'),
 
   // ============================================
   // Subscription / Payment
