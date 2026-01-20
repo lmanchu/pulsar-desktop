@@ -2,6 +2,24 @@
 
 All notable changes to Pulsar Desktop will be documented in this file.
 
+## [Planned] - Future
+
+### Social Profiles Management (v1.3.0+)
+- **Multi-Account Support** - 用戶可管理多個社群帳號
+  - Profile 管理 UI（新增/移除帳號）
+  - 帳號驗證流程（登入並綁定）
+  - 帳號選擇器（發文時選擇 Profile）
+  - 獨立 browser session 儲存
+- **帳號配額限制** - 根據 tier 限制帳號數
+  - Free: 1 帳號, Starter: 3, Pro: 5, Agency: 10
+  - 超過配額顯示升級提示
+- **Profile Types**
+  - Personal Account (X/LinkedIn 個人帳號)
+  - Company Page (LinkedIn Company Page)
+  - Delegate Account (代理發文)
+
+---
+
 ## [1.2.0] - 2026-01-20
 
 ### Added
